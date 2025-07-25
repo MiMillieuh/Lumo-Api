@@ -39,6 +39,8 @@ In `index.js`, replace `YOUR_SECRET_TOKEN_HERE` with your secret token for API a
 ### 4. Run the server:
 ```bash
 node index.js
+
+and wait until you see "login detected"
 ```
 
 The server will be running on `http://localhost:3000`.
