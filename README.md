@@ -17,7 +17,7 @@ This API allows you to send prompts, toggle web search features and handle chatb
 
 ### 1. Clone this repository:
 ```bash
-git clone https://github.com/yourusername/lumo-api.git
+git clone https://github.com/carlostkd/lumo-api.git
 cd lumo-api
 ```
 
