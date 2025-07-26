@@ -86,6 +86,38 @@ curl -X POST http://localhost:3000/api/set-websearch
 -d '{"enabled": false}'
 ```
 
+### Enabling Ghost mode
+
+To enable Ghost Mode :
+
+```bash
+curl -X POST http://localhost:3000/api/set-ghostmode \
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true}' 
+```
+
+### Disabling Ghost mode
+
+To disable Ghost Mode:
+
+```bash
+curl -X POST http://localhost:3000/api/set-ghostmode \
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+ ```
+
+### Start New Chat
+
+To start a new chat:
+
+```bash
+curl -X POST http://localhost:3000/api/start-new-chat \
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \
+  -H "Content-Type: application/json"
+ ```
+
 ## Troubleshooting ⚠️
 
 - **Issue**: No response after sending a prompt.
@@ -100,9 +132,9 @@ If you'd like to contribute to this project, feel free to fork it, make changes,
 
 Any improvement, whether big or small, is welcome. 🌱
 
-=========================
+```
 added python UI Interface
-=========================
+```
 
 
 
