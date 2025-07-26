@@ -86,6 +86,158 @@ app.post('/api/set-websearch', validateToken, async (req, res) => {
   }
 });
 
+
+
+
+app.post('/api/set-ghostmode', validateToken, async (req, res) => {
+  if (!loggedIn) return res.status(401).send('Please login first.');
+
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') return res.status(400).send('Invalid "enabled" value');
+
+  try {
+    await page.bringToFront();
+
+    if (enabled) {
+      
+      const result = await page.evaluate(() => {
+        const paths = Array.from(document.querySelectorAll('path'));
+        const disabledGhostIcon = 'M14.7497 9.25362L15.4433 9.50118L18.0931 7.79902';
+        const enabledGhostIcon = 'M17.0185 11.5867C17.7224 11.6254';
+
+        const ghostPath = paths.find(p =>
+          p.outerHTML.includes(disabledGhostIcon) || p.outerHTML.includes(enabledGhostIcon)
+        );
+        if (!ghostPath) return { success: false, reason: 'Ghost icon not found' };
+
+        const ghostButton = ghostPath.closest('button');
+        if (!ghostButton) return { success: false, reason: 'Ghost button not found' };
+
+        const isEnabled = ghostPath.outerHTML.includes(enabledGhostIcon);
+        return {
+          success: true,
+          isEnabled,
+          selector: ghostButton.getAttribute('data-testid') || ghostButton.outerHTML
+        };
+      });
+
+      if (!result.success) {
+        return res.status(500).send(`Failed to find ghost mode button: ${result.reason}`);
+      }
+
+      if (!result.isEnabled) {
+        try {
+          let buttonSelector = null;
+          if (result.selector && typeof result.selector === 'string' && !result.selector.startsWith('<')) {
+            buttonSelector = `[data-testid="${result.selector}"]`;
+          }
+
+          if (buttonSelector) {
+            await page.waitForSelector(buttonSelector, { visible: true, timeout: 3000 });
+            await new Promise(resolve => setTimeout(resolve, 100));
+            await page.click(buttonSelector, { delay: 50 });
+          } else {
+            await page.evaluate(() => {
+              const disabledGhostIcon = 'M14.7497 9.25362L15.4433 9.50118L18.0931 7.79902';
+              const enabledGhostIcon = 'M17.0185 11.5867C17.7224 11.6254';
+              const paths = Array.from(document.querySelectorAll('path'));
+              const ghostPath = paths.find(p =>
+                p.outerHTML.includes(disabledGhostIcon) || p.outerHTML.includes(enabledGhostIcon)
+              );
+              const ghostButton = ghostPath?.closest('button');
+              if (ghostButton) ghostButton.click();
+            });
+          }
+
+          await new Promise(resolve => setTimeout(resolve, 300));
+
+          const verifyEnabled = await page.evaluate(() => {
+            const paths = Array.from(document.querySelectorAll('path'));
+            const enabledGhostIcon = 'M17.0185 11.5867C17.7224 11.6254';
+            const ghostPath = paths.find(p => p.outerHTML.includes(enabledGhostIcon));
+            return !!ghostPath;
+          });
+
+          if (!verifyEnabled) {
+            return res.status(500).send(`Tried to enable ghost mode, but it's still disabled.`);
+          }
+        } catch (err) {
+          console.error('❌ Error enabling ghost mode:', err);
+          return res.status(500).send(`Failed to enable ghost mode: ${err.message}`);
+        }
+      }
+
+      return res.send(`Ghost mode enabled 🕵️‍♂️ (click verified).`);
+    }
+
+    // new chat workaround dont undestand the ghost button at all....
+    try {
+      // Find the "New chat" button and click it
+      await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll('button.button-for-icon.button-medium.button-solid-norm'));
+        const newChatBtn = buttons.find(btn => btn.textContent?.trim().toLowerCase() === 'new chat');
+        if (newChatBtn) newChatBtn.click();
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // recheck to be sure
+      const ghostModeDisabled = await page.evaluate(() => {
+        const paths = Array.from(document.querySelectorAll('path'));
+        const enabledGhostIcon = 'M17.0185 11.5867C17.7224 11.6254';
+        const ghostPath = paths.find(p => p.outerHTML.includes(enabledGhostIcon));
+        return !ghostPath;
+      });
+
+      if (!ghostModeDisabled) {
+        return res.status(500).send('Tried to disable ghost mode, but it is still active.');
+      }
+
+      return res.send(`Ghost mode disabled 👻 (via "New chat").`);
+    } catch (err) {
+      console.error('❌ Error disabling ghost mode:', err);
+      return res.status(500).send(`Failed to disable ghost mode: ${err.message}`);
+    }
+
+  } catch (err) {
+    console.error('❌ Error toggling ghost mode:', err);
+    res.status(500).send(`Failed to toggle ghost mode: ${err.message}`);
+  }
+});
+
+
+
+app.post('/api/start-new-chat', validateToken, async (req, res) => {
+  if (!loggedIn) return res.status(401).send('Please login first.');
+
+  try {
+    await page.bringToFront();
+
+    // new chat function
+    const result = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll('button.button-for-icon.button-medium.button-solid-norm'));
+      const newChatBtn = buttons.find(btn => btn.textContent?.trim().toLowerCase() === 'new chat');
+      if (newChatBtn) {
+        newChatBtn.click();
+        return true;
+      }
+      return false;
+    });
+
+    if (!result) {
+      return res.status(500).send('❌ Failed to find or click the "New chat" button.');
+    }
+
+    // small delay to ensure chat start
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    res.send('✅ New chat started successfully.');
+  } catch (err) {
+    console.error('❌ Error starting new chat:', err);
+    res.status(500).send(`Failed to start new chat: ${err.message}`);
+  }
+});
+
 app.post('/api/send-prompt', validateToken, async (req, res) => {
   if (!loggedIn) {
     return res.status(401).send('Please login first in the opened browser.');
