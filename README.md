@@ -9,7 +9,7 @@ This API allows you to integrate Proton Lumo Assistante in any of your Projects 
 
 ## Key Features ✨
 
-- **Send Prompts**: Send messages to Lumo and receive responses to interact with Proton services.
+- **Send Prompts**: Send messages to Lumo and receive responses to interact with Proton Lumo.
 - **Web Search Toggle**: Enable or disable the web search functionality when needed. 🔍
 - **Secure API**: Authentication via token security to make sure only authorized users can send requests. 🔑
 - **Turn on/off Ghost mode**:👻 No one can sees you
