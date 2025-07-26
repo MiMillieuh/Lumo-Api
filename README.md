@@ -60,7 +60,7 @@ curl -X POST http://localhost:3000/api/send-prompt
 -d '{"prompt": "What is the weather in Zurich?"}'
 ```
 
-You’ll receive a response from the Lumo bot, like:
+You’ll receive a response from the Lumo like:
 
 ```json
 "The weather in Zurich is clear skies with a temperature of 15°C."
