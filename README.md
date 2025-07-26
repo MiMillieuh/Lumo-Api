@@ -5,13 +5,15 @@ Copyright @Carlostkd
 
 Welcome to **Lumo API**! 🚀 A powerful and flexible API for interacting with the Lumo AI powered by Proton. 
 
-This API allows you to send prompts, toggle web search features and handle chatbot interactions programmatically. 🎉
+This API allows you to integrate Proton Lumo Assistante in any of your Projects - web apps or mobile apps. 🎉
 
 ## Key Features ✨
 
 - **Send Prompts**: Send messages to Lumo and receive responses to interact with Proton services.
 - **Web Search Toggle**: Enable or disable the web search functionality when needed. 🔍
 - **Secure API**: Authentication via token security to make sure only authorized users can send requests. 🔑
+- **Turn on/off Ghost mode**:👻 No one can sees you
+- **Start Fresh**:💬 Start a new chat when you want
 
 ## Installation 🛠️
 
