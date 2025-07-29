@@ -5,6 +5,30 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 
 const app = express();
+//upload files 
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = 'uploads/';
+    //  uploads directory exists?
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    // keep the original filename and ext
+    cb(null, file.originalname);
+  }
+});
+
+const upload = multer({ storage: storage });
+
+module.exports = upload;
+
 app.use(cors());
 app.use(bodyParser.json());
 
@@ -335,6 +359,81 @@ app.post('/api/send-prompt', validateToken, async (req, res) => {
   } catch (err) {
     console.error('❌ Error:', err);
     res.status(500).send(`Waiting failed: ${err.message}`);
+  }
+});
+
+//delete files one by one 
+
+async function clickFirstRemoveButton(page) {
+  try {
+    await page.waitForSelector('[data-testid="remove-button"]', { timeout: 5000 });
+
+    const fileCard = await page.$('[data-testid="remove-button"]');
+
+    if (!fileCard) throw new Error('Remove button not found.');
+
+    const parentCard = await fileCard.evaluateHandle(el => el.closest('div'));
+
+    const box = await parentCard.boundingBox();
+    if (!box) throw new Error('Could not determine bounding box of file card.');
+
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+
+    await new Promise(resolve => setTimeout(resolve, 400));
+
+    const btnBox = await fileCard.boundingBox();
+    if (!btnBox) throw new Error('Remove button is not visible yet');
+
+    await page.mouse.click(btnBox.x + btnBox.width / 2, btnBox.y + btnBox.height / 2);
+
+    console.log('✅ File removed!');
+    await new Promise(resolve => setTimeout(resolve, 500));
+  } catch (err) {
+    console.error('❌ Error in clickFirstRemoveButton:', err.message);
+  }
+}
+
+
+// remove all files
+
+async function clickAllRemoveButtons(page) {
+  try {
+    while (true) {
+      const removeButtons = await page.$$('[data-testid="remove-button"]');
+      if (removeButtons.length === 0) {
+        console.log('✅ No more files to remove.');
+        break;
+      }
+      console.log(`🧹 Removing ${removeButtons.length} file(s)...`);
+      await clickFirstRemoveButton(page);
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  } catch (err) {
+    console.error('❌ Error in clickAllRemoveButtons:', err.message);
+  }
+}
+
+
+app.post('/api/remove-file', validateToken, async (req, res) => {
+  if (!loggedIn) return res.status(401).send('Please login first.');
+
+  const { mode } = req.body;
+  if (!['single', 'all'].includes(mode)) {
+    return res.status(400).send('Invalid mode. Use "single" or "all".');
+  }
+
+  try {
+    await page.bringToFront();
+    if (mode === 'single') {
+      await clickFirstRemoveButton(page);
+      return res.send('🗑️ Removed one file.');
+    } else if (mode === 'all') {
+      await clickAllRemoveButtons(page);
+      return res.send('🧹 All files removed.');
+    }
+  } catch (err) {
+    console.error('❌ Error in /api/remove-file:', err.message);
+    res.status(500).send(`Failed to remove files: ${err.message}`);
   }
 });
 
