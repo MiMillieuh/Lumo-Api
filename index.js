@@ -560,42 +560,60 @@ curl -X POST ${api}/send-prompt \\
      -H "Content-Type: application/json" \\
      -d '{"prompt": "Your question here"}'
 
-2. Toggle Web Search:
+2. Start a New Chat:
+curl -X POST ${api}/start-new-chat \\
+     -H "Authorization: Bearer ${token}"
+
+3. Enable Chat Logging (TXT, JSON, CSV):
+curl -X POST ${api}/set-save-chat \\
+     -H "Authorization: Bearer ${token}" \\
+     -H "Content-Type: application/json" \\
+     -d '{"enabled": true, "format": "txt"}' //or json or csv
+
+4. Disable Chat Logging:
+curl -X POST ${api}/set-save-chat \\
+     -H "Authorization: Bearer ${token}" \\
+     -H "Content-Type: application/json" \\
+     -d '{"enabled": false}'
+
+5. Toggle Web Search:
 curl -X POST ${api}/set-websearch \\
      -H "Authorization: Bearer ${token}" \\
      -H "Content-Type: application/json" \\
      -d '{"enabled": true}'    # or false
 
-3. Enable Ghost Mode:
+6. Enable Ghost Mode:
 curl -X POST ${api}/set-ghostmode \\
      -H "Authorization: Bearer ${token}" \\
      -H "Content-Type: application/json" \\
      -d '{"enabled": true}'
 
-4. Disable Ghost Mode:
+7. Disable Ghost Mode:
 curl -X POST ${api}/set-ghostmode \\
      -H "Authorization: Bearer ${token}" \\
      -H "Content-Type: application/json" \\
      -d '{"enabled": false}'
 
-5. Start a New Chat:
-curl -X POST ${api}/start-new-chat \\
-     -H "Authorization: Bearer ${token}"
-
-6. Upload a File:
+8. Upload a File:
 curl -X POST ${api}/upload-file \\
      -H "Authorization: Bearer ${token}" \\
      -F "file=@yourfile.txt"
 
-7. Delete a File:
+9. Delete a File:
 curl -X POST ${api}/delete-file \\
      -H "Authorization: Bearer ${token}" \\
      -H "Content-Type: application/json" \\
      -d '{"filename": "yourfile.txt"}'
+
+10. Delete All Files:
+curl -X POST ${api}/delete-all-files \\
+     -H "Authorization: Bearer ${token}"
+
   `;
 
   res.type('text/plain').send(helpText);
 });
+
 
 
 app.listen(3000, async () => {
