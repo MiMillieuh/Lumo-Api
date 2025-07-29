@@ -164,6 +164,12 @@ curl -X POST http://localhost:3000/api/remove-file \
   -d '{"mode":"single"}'
  ```
 
+### Show all available commands
+
+```bash
+curl http://localhost:3000/api/help
+```
+
 ## Troubleshooting ⚠️
 
 - **Issue**: No response after sending a prompt.
