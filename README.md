@@ -8,6 +8,8 @@ Copyright @Carlostkd
 
 ## warning ⚠️ If you have installed the previous version to use the upload/delete files you need to install the multer:
 
+## warning ⚠️ chat loggin function logs the Ghost chats too useful to keep saved chats on your end but not online.
+
 ## npm install multer
 
 Welcome to **Lumo API**! 🚀 A powerful and flexible API for interacting with the Lumo AI powered by Proton. 
@@ -163,6 +165,29 @@ curl -X POST http://localhost:3000/api/remove-file \
   -H "Content-Type: application/json" \
   -d '{"mode":"single"}'
  ```
+
+### Enable chat Logging
+
+Enable Loggin and choose the format (json is default available is txt and csv):
+
+```bash
+curl -X POST http://localhost:3000/api/set-save-chat \
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true, "format": "csv"}'
+```
+
+### Disable chat Logging
+
+Chat logs are saved when you START A NEW CHAT you can always disable:
+
+```bash
+curl -X POST http://localhost:3000/api/set-save-chat \
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+```
+
 
 ### Show all available commands
 
