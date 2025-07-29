@@ -5,19 +5,22 @@ from typing import Optional
 
 # === setup ===
 API_BASE = 'http://localhost:3000/api'
-AUTH_TOKEN = 'your_super_token'  # choice your token
+AUTH_TOKEN = 'YOUR_SECRET_TOKEN_HERE'  # set your token
 HEADERS = {'Authorization': f'Bearer {AUTH_TOKEN}'}
-TIMEOUT = 60  
+TIMEOUT = 60 
 
 # === class ===
 class LumoApp:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("Lumo Chat Assistant")
-        self.root.geometry("880x700")  # Better fit for all buttons
+        self.root.geometry("880x700")  
         self.root.minsize(750, 600)
         self.root.protocol("WM_DELETE_WINDOW", self.close_app)
         self.websearch_enabled = False
+        self.chat_logging_enabled = False
+        self.chat_log_format = 'json'  
+        self.current_chat_log = []  
         self.build_widgets()
 
     def build_widgets(self) -> None:
@@ -86,7 +89,7 @@ class LumoApp:
         )
         self.new_chat_btn.pack(side=tk.LEFT, padx=5)
 
-        # Add new buttons for file operations
+        
         self.upload_file_btn = ttk.Button(
             control_frame, text="Upload File", command=self.upload_file
         )
@@ -101,6 +104,32 @@ class LumoApp:
             control_frame, text="Remove All Files", command=self.remove_all_files
         )
         self.remove_all_files_btn.pack(side=tk.LEFT, padx=5)
+
+        
+        chat_logging_frame = ttk.Frame(control_frame)
+        chat_logging_frame.pack(side=tk.LEFT, padx=5)
+
+        
+        self.chat_log_format_label = ttk.Label(chat_logging_frame, text="Chat Log Format:")
+        self.chat_log_format_label.pack(side=tk.LEFT)
+
+        
+        self.chat_log_format_var = tk.StringVar(value="json")
+        self.chat_log_format_menu = ttk.OptionMenu(
+            chat_logging_frame,
+            self.chat_log_format_var,
+            "json",
+            "json",
+            "txt",
+            "csv"
+        )
+        self.chat_log_format_menu.pack(side=tk.LEFT)
+
+        # chat logging
+        self.toggle_chat_logging_btn = ttk.Button(
+            control_frame, text="Enable Chat Logging", command=self.toggle_chat_logging
+        )
+        self.toggle_chat_logging_btn.pack(side=tk.LEFT, padx=5)
 
     def ask_lumo(self) -> None:
         prompt = self.prompt_entry.get().strip()
@@ -122,6 +151,11 @@ class LumoApp:
             )
             if response.ok:
                 self.output_box.insert(tk.END, response.text + "\n")
+                # add response to the chat log
+                self.current_chat_log.append({
+                    "prompt": prompt,
+                    "response": response.text
+                })
             else:
                 self.output_box.insert(tk.END, f"[Error {response.status_code}] {response.text}\n")
         except Exception as e:
@@ -191,6 +225,16 @@ class LumoApp:
 
     def start_new_chat(self) -> None:
         try:
+            # save the chat log 
+            if self.chat_logging_enabled and self.current_chat_log:
+                self.save_chat_log()
+
+            # clear chat log
+            self.current_chat_log = []
+
+            # clear the box
+            self.clear_output()
+
             response = requests.post(
                 f"{API_BASE}/start-new-chat",
                 headers=HEADERS,
@@ -206,9 +250,9 @@ class LumoApp:
             self.output_box.see(tk.END)
 
     def upload_file(self) -> None:
-        # upload logic
+        # file upload 
         try:
-            # dialog to select files
+            # select files
             files = filedialog.askopenfilenames(title="Select files to upload")
             if not files:
                 messagebox.showwarning("Warning", "No files selected.")
@@ -220,7 +264,7 @@ class LumoApp:
                 with open(file_path, 'rb') as f:
                     files_to_upload.append(('files', (file_path.split('/')[-1], f.read())))
 
-            
+            # files to the API
             response = requests.post(
                 f"{API_BASE}/upload-file",
                 files=files_to_upload,
@@ -238,7 +282,7 @@ class LumoApp:
             self.output_box.see(tk.END)
 
     def remove_single_file(self) -> None:
-        # remove one file
+        # single file removal 
         try:
             response = requests.post(
                 f"{API_BASE}/remove-file",
@@ -257,7 +301,7 @@ class LumoApp:
             self.output_box.see(tk.END)
 
     def remove_all_files(self) -> None:
-        # remove all files
+        # all files removal 
         try:
             response = requests.post(
                 f"{API_BASE}/remove-file",
@@ -275,7 +319,54 @@ class LumoApp:
         finally:
             self.output_box.see(tk.END)
 
+    def toggle_chat_logging(self) -> None:
+        # chat logging toggle 
+        try:
+            toggle_to = not self.chat_logging_enabled
+            self.chat_logging_enabled = toggle_to
+            self.chat_log_format = self.chat_log_format_var.get()
+
+            # set chat logging
+            response = requests.post(
+                f"{API_BASE}/set-save-chat",
+                json={"enabled": toggle_to, "format": self.chat_log_format},
+                headers=HEADERS,
+                timeout=10
+            )
+
+            if response.ok:
+                self.toggle_chat_logging_btn.config(
+                    text="Disable Chat Logging" if toggle_to else "Enable Chat Logging"
+                )
+                self.output_box.insert(tk.END, f"[Chat Logging] Chat logging is now {'enabled' if toggle_to else 'disabled'} using format: {self.chat_log_format}\n")
+            else:
+                self.output_box.insert(tk.END, f"[Chat Logging Error] {response.text}\n")
+        except Exception as e:
+            self.output_box.insert(tk.END, f"[Exception] {str(e)}\n")
+        finally:
+            self.output_box.see(tk.END)
+
+    def save_chat_log(self) -> None:
+        """Save the current chat log to the backend."""
+        try:
+            response = requests.post(
+                f"{API_BASE}/save-chat-log",
+                json={"log": self.current_chat_log, "format": self.chat_log_format},
+                headers=HEADERS,
+                timeout=TIMEOUT
+            )
+            if response.ok:
+                self.output_box.insert(tk.END, f"[Chat Log Saved] {response.text}\n")
+            else:
+                self.output_box.insert(tk.END, f"[Save Chat Log Error] {response.text}\n")
+        except Exception as e:
+            self.output_box.insert(tk.END, f"[Exception] {str(e)}\n")
+
     def close_app(self) -> None:
+        # save chat log 
+        if self.chat_logging_enabled and self.current_chat_log:
+            self.save_chat_log()
+
         if messagebox.askokcancel("Quit", "Do you really want to quit?"):
             self.root.destroy()
 
