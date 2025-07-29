@@ -37,6 +37,50 @@ const upload = multer({ storage: storage });
 
 module.exports = upload;
 
+// chat logging config
+const chatLogging = {
+  enabled: false,
+  format: 'json', // default format if none is parsed
+  log: []
+};
+
+function saveChatLog(log, format) {
+  if (!log.length) return;
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `chatlog-${timestamp}.${format}`;
+  const filepath = path.join(__dirname, 'chatlogs', filename);
+
+  // directory exists?
+  fs.mkdirSync(path.dirname(filepath), { recursive: true });
+
+  let content;
+
+  switch(format) {
+    case 'json':
+      content = JSON.stringify(log, null, 2);
+      break;
+    case 'txt':
+      content = log.map(entry => `Prompt: ${entry.prompt}\nResponse: ${entry.response}\n\n`).join('');
+      break;
+    case 'csv':
+      content = 'Prompt,Response\n' + log.map(entry => {
+        // CSV compliance
+        const p = `"${entry.prompt.replace(/"/g, '""')}"`;
+        const r = `"${entry.response.replace(/"/g, '""')}"`;
+        return `${p},${r}`;
+      }).join('\n');
+      break;
+    default:
+      content = JSON.stringify(log, null, 2);
+  }
+
+  fs.writeFileSync(filepath, content);
+  console.log(`✅ Chat log saved to ${filepath}`);
+}
+
+
+
 app.use(cors());
 app.use(bodyParser.json());
 
@@ -237,15 +281,45 @@ app.post('/api/set-ghostmode', validateToken, async (req, res) => {
   }
 });
 
-
-
 app.post('/api/start-new-chat', validateToken, async (req, res) => {
   if (!loggedIn) return res.status(401).send('Please login first.');
 
   try {
+    // === Save logged conversation  ===
+    if (chatLogging?.enabled && chatLogging.log.length > 0) {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filenameBase = `chatlog_${timestamp}`;
+      const saveDir = path.join(__dirname, 'chatlogs');
+
+      if (!fs.existsSync(saveDir)) fs.mkdirSync(saveDir);
+
+      const fullPath = (ext) => path.join(saveDir, `${filenameBase}.${ext}`);
+
+      if (chatLogging.format === 'txt') {
+        const textContent = chatLogging.log.map(
+          pair => `You: ${pair.prompt}\nLumo: ${pair.response}`
+        ).join('\n\n');
+        fs.writeFileSync(fullPath('txt'), textContent, 'utf8');
+
+      } else if (chatLogging.format === 'csv') {
+        const header = `"prompt","response"\n`;
+        const rows = chatLogging.log.map(
+          pair => `"${pair.prompt.replace(/"/g, '""')}","${pair.response.replace(/"/g, '""')}"`
+        ).join('\n');
+        fs.writeFileSync(fullPath('csv'), header + rows, 'utf8');
+
+      } else {
+        // default to json
+        fs.writeFileSync(fullPath('json'), JSON.stringify(chatLogging.log, null, 2), 'utf8');
+      }
+
+      // Clear the log after saving
+      chatLogging.log = [];
+    }
+
+    // === new normal chat ===
     await page.bringToFront();
 
-    // new chat function
     const result = await page.evaluate(() => {
       const buttons = Array.from(document.querySelectorAll('button.button-for-icon.button-medium.button-solid-norm'));
       const newChatBtn = buttons.find(btn => btn.textContent?.trim().toLowerCase() === 'new chat');
@@ -260,9 +334,7 @@ app.post('/api/start-new-chat', validateToken, async (req, res) => {
       return res.status(500).send('❌ Failed to find or click the "New chat" button.');
     }
 
-    // small delay to ensure chat start
     await new Promise(resolve => setTimeout(resolve, 300));
-
     res.send('✅ New chat started successfully.');
   } catch (err) {
     console.error('❌ Error starting new chat:', err);
@@ -270,17 +342,15 @@ app.post('/api/start-new-chat', validateToken, async (req, res) => {
   }
 });
 
+
+
 app.post('/api/send-prompt', validateToken, async (req, res) => {
-  if (!loggedIn) {
-    return res.status(401).send('Please login first in the opened browser.');
-  }
+  if (!loggedIn) return res.status(401).send('Please login first.');
   const { prompt } = req.body;
-  if (!prompt) {
-    return res.status(400).send('Prompt is required.');
-  }
+  if (!prompt) return res.status(400).send('Prompt is required.');
+
   try {
     await page.bringToFront();
-
     const inputSelectors = [
       'p[data-placeholder="Ask anything…"]',
       'div.ProseMirror'
@@ -295,25 +365,18 @@ app.post('/api/send-prompt', validateToken, async (req, res) => {
       } catch {}
     }
 
-    if (!inputHandle) {
-      return res.status(500).send('Prompt input field not found.');
-    }
+    if (!inputHandle) return res.status(500).send('Prompt input field not found.');
 
     await inputHandle.focus();
 
-    // to be sure clear existing input if any
     await page.evaluate(() => {
       const inputElem = document.activeElement;
-      if (inputElem) {
-        inputElem.textContent = '';
-      }
+      if (inputElem) inputElem.textContent = '';
     });
 
-    // prompt 
     await page.keyboard.type(prompt, { delay: 20 });
     await page.keyboard.press('Enter');
 
-    // Capture previous assistant response text to detect new reply
     const previousResponse = await page.evaluate(() => {
       const blocks = Array.from(document.querySelectorAll('.assistant-msg-container'))
         .map(div => div.innerText.trim()
@@ -327,7 +390,6 @@ app.post('/api/send-prompt', validateToken, async (req, res) => {
       return blocks.length ? blocks[blocks.length - 1] : null;
     });
 
-    // Wait for new different response
     const finalResponse = await page.waitForFunction(
       (prevText) => {
         const blocks = Array.from(document.querySelectorAll('.assistant-msg-container'))
@@ -359,6 +421,14 @@ app.post('/api/send-prompt', validateToken, async (req, res) => {
 
     const responseText = await finalResponse.jsonValue();
 
+    // response pair if chat logging is enabled
+    if (chatLogging?.enabled && responseText) {
+      chatLogging.log.push({
+        prompt,
+        response: responseText
+      });
+    }
+
     if (!responseText) {
       return res.send('Prompt sent, but response not detected.');
     }
@@ -369,6 +439,7 @@ app.post('/api/send-prompt', validateToken, async (req, res) => {
     res.status(500).send(`Waiting failed: ${err.message}`);
   }
 });
+
 
 //delete files one by one 
 
@@ -444,6 +515,34 @@ app.post('/api/remove-file', validateToken, async (req, res) => {
     res.status(500).send(`Failed to remove files: ${err.message}`);
   }
 });
+
+// enable or disable chat choose format
+app.post('/api/set-save-chat', validateToken, (req, res) => {
+  const { enabled, format } = req.body;
+
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).send('Missing or invalid "enabled" value (must be true or false).');
+  }
+
+  const supportedFormats = ['json', 'txt', 'csv'];
+  const chosenFormat = (format || 'json').toLowerCase();
+
+  if (!supportedFormats.includes(chosenFormat)) {
+    return res.status(400).send(`Invalid format. Supported formats: ${supportedFormats.join(', ')}`);
+  }
+
+  chatLogging.enabled = enabled;
+  chatLogging.format = chosenFormat;
+
+  
+  if (enabled) {
+    chatLogging.log = [];
+  }
+
+  res.send(`✅ Chat logging ${enabled ? 'enabled' : 'disabled'} using format: ${chosenFormat}`);
+});
+
+
 
 app.get('/api/help', (req, res) => {
   const api = 'http://localhost:3000/api';
