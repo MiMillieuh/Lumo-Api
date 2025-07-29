@@ -172,6 +172,8 @@ curl -X POST http://localhost:3000/api/remove-file \
 
 ### Enable chat Logging
 
+### Chat logs are saved when you START A NEW CHAT
+
 Enable Loggin and choose the format (json is default available is txt and csv):
 
 ```bash
