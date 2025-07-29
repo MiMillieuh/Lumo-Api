@@ -24,6 +24,9 @@ This API allows you to integrate Proton Lumo Assistante in any of your Projects 
 - **Secure API**: Authentication via token security to make sure only authorized users can send requests. 🔑
 - **Turn on/off Ghost mode**:👻 No one can sees you
 - **Start Fresh**:💬 Start a new chat when you want
+- **Upload and delete files**:💬 Always like a pro
+- **Chat Logging**:💬 Gives you full controle of yours chat
+- **Help Function**: List all available commands
 
 ## Installation 🛠️
 
