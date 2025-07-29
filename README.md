@@ -1,5 +1,6 @@
 
-# Lumo API 🤖🧠
+# Lumo API ![Lumo-Api](https://pmecdn.protonweb.com/image-transformation/?s=s&image=Lumo_OG_b782facdaf.png)
+🤖🧠
 
 Copyright @Carlostkd
 
