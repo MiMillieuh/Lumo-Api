@@ -6,11 +6,12 @@
 
 Copyright @Carlostkd
 
-## warning ⚠️ If you have installed the previous version to use the upload/delete files you need to install the multer:
+warning ⚠️ If you have installed the previous version to use the upload/delete files you need to install the multer:
+
+npm install multer
 
 ## warning ⚠️ chat loggin function logs the Ghost chats too useful to keep saved chats on your end but not online.
 
-## npm install multer
 
 Welcome to **Lumo API**! 🚀 A powerful and flexible API for interacting with the Lumo AI powered by Proton. 
 
