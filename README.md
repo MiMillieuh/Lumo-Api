@@ -3,6 +3,10 @@
 
 Copyright @Carlostkd
 
+## warning ⚠️ If you have installed the previous version to use the upload/delete files you need to install the multer:
+
+## npm install multer
+
 Welcome to **Lumo API**! 🚀 A powerful and flexible API for interacting with the Lumo AI powered by Proton. 
 
 This API allows you to integrate Proton Lumo Assistante in any of your Projects - web apps or mobile apps. 🎉
@@ -27,7 +31,8 @@ cd lumo-api
 ```bash
 npm init -y
 
-npm install express puppeteer-core puppeteer body-parser cors
+npm install express puppeteer-core puppeteer body-parser cors multer
+
 
 run the app
 
@@ -118,6 +123,42 @@ To start a new chat:
 curl -X POST http://localhost:3000/api/start-new-chat \
   -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \
   -H "Content-Type: application/json"
+ ```
+
+### Upload Files (max 10 dont know the real limit of Lumo...)
+
+Upload file or multi files:
+
+```bash
+curl -X POST http://localhost:3000/api/upload-file \
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \
+  -F "files=@./test.html" \            
+  -F "files=@./test2.txt" \
+  -F "files=@./test3.txt"
+ ```
+
+```bash
+curl -X POST http://localhost:3000/api/upload-file \
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \
+  -F "files=@./test.html"            
+```
+
+### Delete Files
+
+To delete one by one or all:
+
+```bash
+curl -X POST http://localhost:3000/api/remove-file \
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"all"}'
+ ```
+
+```bash
+curl -X POST http://localhost:3000/api/remove-file \
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"single"}'
  ```
 
 ## Troubleshooting ⚠️
