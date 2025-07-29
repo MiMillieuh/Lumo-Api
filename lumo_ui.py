@@ -1,21 +1,20 @@
 import tkinter as tk
-from tkinter import scrolledtext, messagebox, ttk
+from tkinter import scrolledtext, messagebox, ttk, filedialog
 import requests
 from typing import Optional
 
 # === setup ===
 API_BASE = 'http://localhost:3000/api'
-AUTH_TOKEN = 'mysupercode'  # use a secure code
+AUTH_TOKEN = 'your_super_token'  # choice your token
 HEADERS = {'Authorization': f'Bearer {AUTH_TOKEN}'}
 TIMEOUT = 60  
-
 
 # === class ===
 class LumoApp:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("Lumo Chat Assistant")
-        self.root.geometry("880x700")  
+        self.root.geometry("880x700")  # Better fit for all buttons
         self.root.minsize(750, 600)
         self.root.protocol("WM_DELETE_WINDOW", self.close_app)
         self.websearch_enabled = False
@@ -86,6 +85,22 @@ class LumoApp:
             control_frame, text="Start New Chat 💬", command=self.start_new_chat
         )
         self.new_chat_btn.pack(side=tk.LEFT, padx=5)
+
+        # Add new buttons for file operations
+        self.upload_file_btn = ttk.Button(
+            control_frame, text="Upload File", command=self.upload_file
+        )
+        self.upload_file_btn.pack(side=tk.LEFT, padx=5)
+
+        self.remove_single_file_btn = ttk.Button(
+            control_frame, text="Remove Single File", command=self.remove_single_file
+        )
+        self.remove_single_file_btn.pack(side=tk.LEFT, padx=5)
+
+        self.remove_all_files_btn = ttk.Button(
+            control_frame, text="Remove All Files", command=self.remove_all_files
+        )
+        self.remove_all_files_btn.pack(side=tk.LEFT, padx=5)
 
     def ask_lumo(self) -> None:
         prompt = self.prompt_entry.get().strip()
@@ -190,14 +205,82 @@ class LumoApp:
         finally:
             self.output_box.see(tk.END)
 
+    def upload_file(self) -> None:
+        # upload logic
+        try:
+            # dialog to select files
+            files = filedialog.askopenfilenames(title="Select files to upload")
+            if not files:
+                messagebox.showwarning("Warning", "No files selected.")
+                return
+
+            # files for upload
+            files_to_upload = []
+            for file_path in files:
+                with open(file_path, 'rb') as f:
+                    files_to_upload.append(('files', (file_path.split('/')[-1], f.read())))
+
+            
+            response = requests.post(
+                f"{API_BASE}/upload-file",
+                files=files_to_upload,
+                headers=HEADERS,
+                timeout=TIMEOUT
+            )
+
+            if response.ok:
+                self.output_box.insert(tk.END, f"[Upload Success] {response.text}\n")
+            else:
+                self.output_box.insert(tk.END, f"[Upload Error] {response.text}\n")
+        except Exception as e:
+            self.output_box.insert(tk.END, f"[Exception] {str(e)}\n")
+        finally:
+            self.output_box.see(tk.END)
+
+    def remove_single_file(self) -> None:
+        # remove one file
+        try:
+            response = requests.post(
+                f"{API_BASE}/remove-file",
+                json={"mode": "single"},
+                headers=HEADERS,
+                timeout=TIMEOUT
+            )
+
+            if response.ok:
+                self.output_box.insert(tk.END, f"[Remove Success] {response.text}\n")
+            else:
+                self.output_box.insert(tk.END, f"[Remove Error] {response.text}\n")
+        except Exception as e:
+            self.output_box.insert(tk.END, f"[Exception] {str(e)}\n")
+        finally:
+            self.output_box.see(tk.END)
+
+    def remove_all_files(self) -> None:
+        # remove all files
+        try:
+            response = requests.post(
+                f"{API_BASE}/remove-file",
+                json={"mode": "all"},
+                headers=HEADERS,
+                timeout=TIMEOUT
+            )
+
+            if response.ok:
+                self.output_box.insert(tk.END, f"[Remove Success] {response.text}\n")
+            else:
+                self.output_box.insert(tk.END, f"[Remove Error] {response.text}\n")
+        except Exception as e:
+            self.output_box.insert(tk.END, f"[Exception] {str(e)}\n")
+        finally:
+            self.output_box.see(tk.END)
+
     def close_app(self) -> None:
         if messagebox.askokcancel("Quit", "Do you really want to quit?"):
             self.root.destroy()
-
 
 # === main ===
 if __name__ == "__main__":
     root = tk.Tk()
     app = LumoApp(root)
     root.mainloop()
-
