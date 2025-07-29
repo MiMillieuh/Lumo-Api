@@ -4,7 +4,10 @@
  * Last Updated: 2025-07-29
  * Changes:
  *   - Added full curl instructions for all supported API endpoints:
- *   - Added functions to upload and delete files  
+ *   - Added functions to upload and delete files 
+ *   - Added chat loggin functions
+ *   - WARNING- chat loggin logs the ghost chats too
+ *   - useful to keep the chats on your end but not online
  */
 const express = require('express');
 const puppeteer = require('puppeteer-core');
