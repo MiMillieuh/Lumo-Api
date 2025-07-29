@@ -1,3 +1,11 @@
+/**
+ * LUMO-API
+ * Author: @carlostkd  
+ * Last Updated: 2025-07-29
+ * Changes:
+ *   - Added full curl instructions for all supported API endpoints:
+ *   - Added functions to upload and delete files  
+ */
 const express = require('express');
 const puppeteer = require('puppeteer-core');
 const { executablePath } = require('puppeteer');
@@ -436,6 +444,57 @@ app.post('/api/remove-file', validateToken, async (req, res) => {
     res.status(500).send(`Failed to remove files: ${err.message}`);
   }
 });
+
+app.get('/api/help', (req, res) => {
+  const api = 'http://localhost:3000/api';
+  const token = 'YOUR_SECRET_TOKEN_HERE';
+
+  const helpText = `
+=== CURL COMMANDS FOR LUMO API ===
+
+1. Send a Prompt:
+curl -X POST ${api}/send-prompt \\
+     -H "Authorization: Bearer ${token}" \\
+     -H "Content-Type: application/json" \\
+     -d '{"prompt": "Your question here"}'
+
+2. Toggle Web Search:
+curl -X POST ${api}/set-websearch \\
+     -H "Authorization: Bearer ${token}" \\
+     -H "Content-Type: application/json" \\
+     -d '{"enabled": true}'    # or false
+
+3. Enable Ghost Mode:
+curl -X POST ${api}/set-ghostmode \\
+     -H "Authorization: Bearer ${token}" \\
+     -H "Content-Type: application/json" \\
+     -d '{"enabled": true}'
+
+4. Disable Ghost Mode:
+curl -X POST ${api}/set-ghostmode \\
+     -H "Authorization: Bearer ${token}" \\
+     -H "Content-Type: application/json" \\
+     -d '{"enabled": false}'
+
+5. Start a New Chat:
+curl -X POST ${api}/start-new-chat \\
+     -H "Authorization: Bearer ${token}"
+
+6. Upload a File:
+curl -X POST ${api}/upload-file \\
+     -H "Authorization: Bearer ${token}" \\
+     -F "file=@yourfile.txt"
+
+7. Delete a File:
+curl -X POST ${api}/delete-file \\
+     -H "Authorization: Bearer ${token}" \\
+     -H "Content-Type: application/json" \\
+     -d '{"filename": "yourfile.txt"}'
+  `;
+
+  res.type('text/plain').send(helpText);
+});
+
 
 app.listen(3000, async () => {
   await launchBrowser();
