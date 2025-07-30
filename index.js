@@ -1,7 +1,3 @@
-// === version 3.0 ===
-// === Author @Carlostkd ===
-// === 30.07.25 ===
-// === new feautures and bug fixes ===
 const express = require('express');
 const puppeteer = require('puppeteer-core');
 const { executablePath } = require('puppeteer');
@@ -13,6 +9,10 @@ const axios = require('axios');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+// envolving function
+let responseParts = [];
+let currentDialogueContext = "";
+let isDialogueActive = false;
 //hmas api
 // External modules
 const fetch = (...args) => import('node-fetch').then(mod => mod.default(...args));
@@ -775,6 +775,351 @@ ${lumoResponse}
 });
 
 
+// evolving dialogue
+app.post('/api/send-automated-dialogue', validateToken, async (req, res) => {
+  if (!loggedIn) return res.status(401).send('Please login first.');
+  const { initialPrompt, maxTurns = 30 } = req.body;
+  if (!initialPrompt) return res.status(400).send('Initial prompt is required.');
+
+  try {
+    // Reset dialogue state
+    responseParts = [];
+    currentDialogueContext = "";
+    isDialogueActive = true;
+
+    // Function to extract keywords from a response
+    const extractKeywords = (text) => {
+      const stopWords = new Set(['the', 'and', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'is', 'are', 'was', 'were', 'it', 'that', 'this', 'these', 'those', 'be', 'by', 'as', 'are', 'has', 'have', 'had']);
+      const words = text.toLowerCase().split(/\s+/)
+        .map(word => word.replace(/[^\w\s]/g, ''))
+        .filter(word => word.length > 2 && !stopWords.has(word));
+
+      const wordCount = {};
+      words.forEach(word => {
+        wordCount[word] = (wordCount[word] || 0) + 1;
+      });
+
+      return Object.entries(wordCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(entry => entry[0]);
+    };
+
+    // Function to categorize the main topic of a response
+    const categorizeTopic = (keywords) => {
+      const topicCategories = {
+        'weather': ['weather', 'temperature', 'forecast', 'rain', 'snow', 'storm'],
+        'travel': ['zurich', 'city', 'location', 'visit', 'tourist', 'travel', 'destination'],
+        'technology': ['computer', 'software', 'hardware', 'code', 'programming', 'algorithm'],
+        'science': ['research', 'study', 'experiment', 'discovery', 'scientific', 'data'],
+        'history': ['historical', 'past', 'event', 'war', 'revolution', 'period'],
+        'culture': ['art', 'music', 'film', 'literature', 'tradition', 'custom'],
+        'health': ['medical', 'doctor', 'hospital', 'disease', 'treatment', 'health'],
+        'food': ['restaurant', 'cooking', 'recipe', 'dish', 'cuisine', 'meal']
+      };
+
+      for (const [category, keywordsList] of Object.entries(topicCategories)) {
+        if (keywords.some(keyword => keywordsList.includes(keyword))) {
+          return category;
+        }
+      }
+
+      return 'general';
+    };
+
+    // Function to generate a follow-up prompt that may transition to a new topic
+    const generateFollowUpPrompt = (turnNumber, currentTopic) => {
+      const lastResponse = responseParts[responseParts.length - 1];
+      const keywords = extractKeywords(lastResponse);
+      const currentKeywords = keywords.slice(0, 2);
+
+      // Determine if we should stay on topic or transition
+      const shouldTransition = turnNumber % 4 === 0 ||
+                              (turnNumber > 5 && Math.random() > 0.7) ||
+                              (lastResponse.split(/\s+/).length < 15 && turnNumber > 3);
+
+      if (shouldTransition) {
+        // Generate a prompt that transitions to a new topic
+        const topicTransitions = {
+          'weather': [
+            `Speaking of ${currentKeywords[0]}, do you have any favorite ${['books', 'movies', 'places'][Math.floor(Math.random() * 3)]} related to this?`,
+            `Does ${currentKeywords[0]} remind you of any interesting ${['stories', 'experiences', 'events'][Math.floor(Math.random() * 3)]}?`,
+            `What's something completely different that you find fascinating?`
+          ],
+          'travel': [
+            `Besides ${currentKeywords[0]}, what other destinations interest you?`,
+            `Do you have any hobbies unrelated to travel?`,
+            `What's a fascinating fact about something completely different?`
+          ],
+          'technology': [
+            `Beyond technology, what other fields interest you?`,
+            `What's something in nature that amazes you?`,
+            `Do you have any favorite ${['books', 'movies', 'art forms'][Math.floor(Math.random() * 3)]}?`
+          ],
+          'science': [
+            `Outside of science, what captures your attention?`,
+            `What's a historical event that you find intriguing?`,
+            `Do you enjoy any creative activities like ${['writing', 'painting', 'music'][Math.floor(Math.random() * 3)]}?`
+          ],
+          'history': [
+            `Moving beyond history, what modern topics interest you?`,
+            `What's something in the natural world that fascinates you?`,
+            `Do you have any favorite ${['novels', 'films', 'artworks'][Math.floor(Math.random() * 3)]}?`
+          ],
+          'culture': [
+            `Beyond cultural topics, what else do you enjoy learning about?`,
+            `What scientific discoveries do you find most interesting?`,
+            `Do you have any favorite places to visit or explore?`
+          ],
+          'health': [
+            `Outside of health topics, what other subjects interest you?`,
+            `What technological advancements do you find most exciting?`,
+            `Do you have any favorite ${['books', 'movies', 'hobbies'][Math.floor(Math.random() * 3)]}?`
+          ],
+          'food': [
+            `Beyond food, what other topics do you enjoy discussing?`,
+            `What's something in nature that you find fascinating?`,
+            `Do you have any favorite ${['historical', 'scientific', 'cultural'][Math.floor(Math.random() * 3)]} topics?`
+          ],
+          'general': [
+            `What's something completely different you'd like to talk about?`,
+            `Do you have any favorite ${['books', 'movies', 'hobbies'][Math.floor(Math.random() * 3)]}?`,
+            `What's a fascinating fact about something unexpected?`
+          ]
+        };
+
+        // Select a transition prompt based on the current topic
+        const transitionPrompts = topicTransitions[currentTopic] || topicTransitions['general'];
+        return transitionPrompts[Math.floor(Math.random() * transitionPrompts.length)];
+      } else {
+        // Stay on topic with a more specific follow-up
+        const topicSpecificPrompts = {
+          'weather': [
+            `What factors contribute to the ${currentKeywords[0]} patterns in this region?`,
+            `How does ${currentKeywords[0]} affect daily life here?`,
+            `Are there any interesting ${currentKeywords[0]}-related phenomena?`
+          ],
+          'travel': [
+            `What makes ${currentKeywords[0]} special compared to other places?`,
+            `What are some hidden gems in or near ${currentKeywords[0]}?`,
+            `How has ${currentKeywords[0]} changed over time?`
+          ],
+          'technology': [
+            `What are the latest developments in ${currentKeywords[0]}?`,
+            `How is ${currentKeywords[0]} impacting other industries?`,
+            `What challenges does ${currentKeywords[0]} currently face?`
+          ],
+          'science': [
+            `What recent ${currentKeywords[0]} discoveries excite you?`,
+            `How does ${currentKeywords[0]} research benefit society?`,
+            `What are the biggest questions in ${currentKeywords[0]} today?`
+          ],
+          'history': [
+            `What lesser-known ${currentKeywords[0]} events are interesting?`,
+            `How does ${currentKeywords[0]} shape our present?`,
+            `What can we learn from ${currentKeywords[0]}?`
+          ],
+          'culture': [
+            `What unique ${currentKeywords[0]} traditions exist?`,
+            `How has ${currentKeywords[0]} evolved over time?`,
+            `What are some famous figures in ${currentKeywords[0]}?`
+          ],
+          'health': [
+            `What are the latest ${currentKeywords[0]} breakthroughs?`,
+            `How can we improve ${currentKeywords[0]} awareness?`,
+            `What are common misconceptions about ${currentKeywords[0]}?`
+          ],
+          'food': [
+            `What traditional ${currentKeywords[0]} dishes are popular?`,
+            `How has ${currentKeywords[0]} culture influenced other cuisines?`,
+            `What are some unique ${currentKeywords[0]} ingredients?`
+          ],
+          'general': [
+            `Could you tell me more about that?`,
+            `What are the key aspects of this topic?`,
+            `How does this connect to other areas?`
+          ]
+        };
+
+        // Select a topic-specific prompt
+        const specificPrompts = topicSpecificPrompts[currentTopic] || topicSpecificPrompts['general'];
+        return specificPrompts[Math.floor(Math.random() * specificPrompts.length)];
+      }
+    };
+
+    // Function to send a single prompt and get response
+    const sendSinglePrompt = async (prompt) => {
+      await page.bringToFront();
+      const inputSelectors = [
+        'p[data-placeholder="Ask anything\\n"]',
+        'div.ProseMirror'
+      ];
+      let inputHandle = null;
+
+      // Wait for and select the input field
+      for (const selector of inputSelectors) {
+        try {
+          await page.waitForSelector(selector, { timeout: 10000 });
+          inputHandle = await page.$(selector);
+          if (inputHandle) break;
+        } catch (error) {
+          console.error(`Error selecting input with selector ${selector}:`, error);
+        }
+      }
+
+      if (!inputHandle) throw new Error('Prompt input field not found.');
+
+      await inputHandle.focus();
+      await page.evaluate(() => {
+        const inputElem = document.activeElement;
+        if (inputElem) inputElem.textContent = '';
+      });
+
+      console.log("Sending prompt:", prompt);
+      await page.keyboard.type(prompt, { delay: 20 });
+      await page.keyboard.press('Enter');
+
+      // Wait for the response with increased timeout
+      const previousResponse = await page.evaluate(() => {
+        const blocks = Array.from(document.querySelectorAll('.assistant-msg-container'))
+          .map(div => div.innerText.trim()
+            .replace(/I like this response.*$/gis, '')
+            .replace(/Report an issue.*$/gis, '')
+            .replace(/Copy.*$/gis, '')
+            .replace(/Regenerate.*$/gis, '')
+            .trim()
+          )
+          .filter(text => text.length > 0);
+        return blocks.length ? blocks[blocks.length - 1] : null;
+      });
+
+      const finalResponse = await page.waitForFunction(
+        (prevText) => {
+          const blocks = Array.from(document.querySelectorAll('.assistant-msg-container'))
+            .map(div => div.innerText.trim()
+              .replace(/I like this response.*$/gis, '')
+              .replace(/Report an issue.*$/gis, '')
+              .replace(/Copy.*$/gis, '')
+              .replace(/Regenerate.*$/gis, '')
+              .trim()
+            )
+            .filter(text => text.length > 0);
+          if (!blocks.length) return false;
+          const last = blocks[blocks.length - 1];
+          if (!last || last === prevText) return false;
+          if (!window._prevContent) {
+            window._prevContent = { text: last, time: Date.now() };
+            return false;
+          }
+          if (window._prevContent.text !== last) {
+            window._prevContent = { text: last, time: Date.now() };
+            return false;
+          }
+          const elapsed = Date.now() - window._prevContent.time;
+          return elapsed > 30000 ? last : false; // Increased timeout to 30 seconds
+        },
+        { timeout: 60000 }, // Increased overall timeout to 60 seconds
+        previousResponse
+      );
+
+      const responseText = await finalResponse.jsonValue();
+
+      if (!responseText) throw new Error('No response received from Lumo');
+
+      // Update context and store response
+      currentDialogueContext = responseText;
+      responseParts.push(responseText);
+
+      return responseText;
+    };
+
+    // Initialize response container
+    const dialogueResponses = {
+      initialPrompt,
+      responses: []
+    };
+
+    // Send initial prompt
+    let currentTopic = 'general';
+    const initialResponse = await sendSinglePrompt(initialPrompt);
+    dialogueResponses.responses.push({
+      turn: 1,
+      prompt: initialPrompt,
+      response: initialResponse
+    });
+
+    // Determine initial topic
+    const initialKeywords = extractKeywords(initialResponse);
+    currentTopic = categorizeTopic(initialKeywords);
+
+    // Continue the dialogue until maxTurns is reached
+    let turnNumber = 2;
+    while (isDialogueActive && turnNumber <= maxTurns) {
+      // Generate a context-aware follow-up prompt
+      const followUpPrompt = generateFollowUpPrompt(turnNumber, currentTopic);
+
+      console.log(`Turn ${turnNumber}: Generated follow-up prompt:`, followUpPrompt);
+
+      try {
+        const followUpResponse = await sendSinglePrompt(followUpPrompt);
+        dialogueResponses.responses.push({
+          turn: turnNumber,
+          prompt: followUpPrompt,
+          response: followUpResponse
+        });
+
+        // Update current topic if we transitioned
+        const newKeywords = extractKeywords(followUpResponse);
+        const newTopic = categorizeTopic(newKeywords);
+        if (newTopic !== currentTopic) {
+          currentTopic = newTopic;
+          console.log(`Topic transitioned to: ${currentTopic}`);
+        }
+
+        turnNumber++;
+
+        // Check if we've reached the maximum turns
+        if (turnNumber > maxTurns) {
+          console.log(`Reached maximum turns (${maxTurns})`);
+          break;
+        }
+
+        // Increased delay between turns to 2 seconds
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } catch (error) {
+        console.error(`Error during turn ${turnNumber}:`, error);
+        // Continue to next turn even if there's an error
+        turnNumber++;
+      }
+    }
+
+    // Log the complete dialogue if chat logging is enabled
+    if (chatLogging?.enabled) {
+      chatLogging.log.push({
+        type: "dialogue",
+        initialPrompt,
+        responses: dialogueResponses.responses
+      });
+    }
+
+    res.json({
+      dialogue: dialogueResponses,
+      suggestion: "Consider enabling Web Search for more accurate and detailed responses",
+      completedTurns: turnNumber - 1,
+      maxTurns: maxTurns,
+      status: "completed",
+      finalTopic: currentTopic
+    });
+
+  } catch (err) {
+    isDialogueActive = false;
+    console.error('Error in automated dialogue:', err);
+    res.status(500).send(`Dialogue error: ${err.message}`);
+  } finally {
+    isDialogueActive = false;
+  }
+});
+
 
 
 app.get('/api/help', (req, res) => {
@@ -839,6 +1184,13 @@ curl -X POST http://localhost:3000/api/remove-file \\
   -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
   -H "Content-Type: application/json" \\
   -d '{"mode":"single"}'
+
+  
+➤ Envolving Function
+curl -X POST http://localhost:3000/api/send-automated-dialogue \
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{"initialPrompt": "what is proton lumo", "maxTurns": 30}'
   
 
 ➤ Call to Hmas Api // read the api docs for more commands
