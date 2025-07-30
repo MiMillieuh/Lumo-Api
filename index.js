@@ -1,25 +1,36 @@
-/**
- * LUMO-API
- * Author: @carlostkd  
- * Last Updated: 2025-07-29
- * Changes:
- *   - Added full curl instructions for all supported API endpoints:
- *   - Added functions to upload and delete files 
- *   - Added chat loggin functions
- *   - WARNING- chat loggin logs the ghost chats too
- *   - useful to keep the chats on your end but not online
- */
+// === version 3.0 ===
+// === Author @Carlostkd ===
+// === 30.07.25 ===
+// === new feautures and bug fixes ===
 const express = require('express');
 const puppeteer = require('puppeteer-core');
 const { executablePath } = require('puppeteer');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-
 const app = express();
+const axios = require('axios');
 //upload files 
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+//hmas api
+// External modules
+const fetch = (...args) => import('node-fetch').then(mod => mod.default(...args));
+const YAML = require('yaml');            // yaml responses
+
+// format types according to Hmas
+const FORMAT_JSON = 'json';
+const FORMAT_YAML = 'yaml';
+const FORMAT_HTML = 'html';
+const FORMAT_TXT  = 'txt';
+
+// MIME types
+const CONTENT_TYPE_JSON  = 'application/json';
+const CONTENT_TYPE_YAML  = 'application/x-yaml';
+const CONTENT_TYPE_HTML  = 'text/html';
+const CONTENT_TYPE_PLAIN = 'text/plain';
+
+
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -40,11 +51,13 @@ const upload = multer({ storage: storage });
 
 module.exports = upload;
 
-// chat logging config
+// Global chat logging config
 const chatLogging = {
   enabled: false,
-  format: 'json', // default format if none is parsed
-  log: []
+  format: 'json', // default format
+  log: [],
+  backupInterval: 10000, // every 10 seconds
+  backupFile: path.join(__dirname, 'chatlogs', 'chatlog.backup.json')
 };
 
 function saveChatLog(log, format) {
@@ -54,7 +67,7 @@ function saveChatLog(log, format) {
   const filename = `chatlog-${timestamp}.${format}`;
   const filepath = path.join(__dirname, 'chatlogs', filename);
 
-  // directory exists?
+  // Ensure directory exists
   fs.mkdirSync(path.dirname(filepath), { recursive: true });
 
   let content;
@@ -68,7 +81,7 @@ function saveChatLog(log, format) {
       break;
     case 'csv':
       content = 'Prompt,Response\n' + log.map(entry => {
-        // CSV compliance
+        // Escape quotes for CSV compliance
         const p = `"${entry.prompt.replace(/"/g, '""')}"`;
         const r = `"${entry.response.replace(/"/g, '""')}"`;
         return `${p},${r}`;
@@ -82,14 +95,23 @@ function saveChatLog(log, format) {
   console.log(`✅ Chat log saved to ${filepath}`);
 }
 
+// save backup log in case of crash
+setInterval(() => {
+  if (!chatLogging.enabled || !chatLogging.log.length) return;
 
+  try {
+    fs.mkdirSync(path.dirname(chatLogging.backupFile), { recursive: true });
+    fs.writeFileSync(chatLogging.backupFile, JSON.stringify(chatLogging.log, null, 2));
+    console.log('💾 Chat log backup saved.');
+  } catch (err) {
+    console.error('❌ Failed to write chat log backup:', err);
+  }
+}, chatLogging.backupInterval);
 
 app.use(cors());
 app.use(bodyParser.json());
 
-// set your own token here 
 const SECRET_TOKEN = 'YOUR_SECRET_TOKEN_HERE';
-
 let browser, page;
 let loggedIn = false;
 let webSearchEnabled = false;
@@ -102,8 +124,8 @@ async function launchBrowser() {
     args: ['--start-maximized'],
     defaultViewport: null,
   });
-  page = await browser.newPage();
 
+  page = await browser.newPage();
   await page.goto('https://lumo.proton.me/chat', { waitUntil: 'networkidle2' });
 
   console.log('Please log in manually to Proton Lumo in the opened browser.');
@@ -130,21 +152,16 @@ const validateToken = (req, res, next) => {
 };
 
 app.post('/api/set-websearch', validateToken, async (req, res) => {
-  if (!loggedIn) {
-    return res.status(401).send('Please login first in the opened browser.');
-  }
+  if (!loggedIn) return res.status(401).send('Please login first.');
   const { enabled } = req.body;
-  if (typeof enabled !== 'boolean') {
-    return res.status(400).send('Invalid "enabled" value, must be boolean.');
-  }
+  if (typeof enabled !== 'boolean') return res.status(400).send('Invalid "enabled" value');
+
   try {
     await page.bringToFront();
-
     const result = await page.evaluate((shouldEnable) => {
       const buttons = Array.from(document.querySelectorAll('button'));
       const webSearchButton = buttons.find(btn => btn.innerText.trim() === 'Web search');
       if (!webSearchButton) return { success: false, reason: 'Web search button not found' };
-
       const isActive = webSearchButton.classList.contains('is-active');
       if (isActive !== shouldEnable) {
         webSearchButton.click();
@@ -165,9 +182,6 @@ app.post('/api/set-websearch', validateToken, async (req, res) => {
   }
 });
 
-
-
-
 app.post('/api/set-ghostmode', validateToken, async (req, res) => {
   if (!loggedIn) return res.status(401).send('Please login first.');
 
@@ -178,7 +192,7 @@ app.post('/api/set-ghostmode', validateToken, async (req, res) => {
     await page.bringToFront();
 
     if (enabled) {
-      
+      // ✅ ENABLE ghost mode 
       const result = await page.evaluate(() => {
         const paths = Array.from(document.querySelectorAll('path'));
         const disabledGhostIcon = 'M14.7497 9.25362L15.4433 9.50118L18.0931 7.79902';
@@ -246,10 +260,10 @@ app.post('/api/set-ghostmode', validateToken, async (req, res) => {
         }
       }
 
-      return res.send(`Ghost mode enabled 🕵️‍♂️ (click verified).`);
+      return res.send(`Ghost mode enabled 🕵️‍♂️ .`);
     }
 
-    // new chat workaround dont undestand the ghost button at all....
+    // ❌ DISABLE ghost mode via "New chat" workaround but works
     try {
       // Find the "New chat" button and click it
       await page.evaluate(() => {
@@ -260,16 +274,21 @@ app.post('/api/set-ghostmode', validateToken, async (req, res) => {
 
       await new Promise(resolve => setTimeout(resolve, 300));
 
-      // recheck to be sure
+      // Recheck to confirm ghost mode is now OFF
       const ghostModeDisabled = await page.evaluate(() => {
-        const paths = Array.from(document.querySelectorAll('path'));
-        const enabledGhostIcon = 'M17.0185 11.5867C17.7224 11.6254';
-        const ghostPath = paths.find(p => p.outerHTML.includes(enabledGhostIcon));
-        return !ghostPath;
+      const paths = Array.from(document.querySelectorAll('path'));
+      const enabledGhostIcon = 'M17.0185 11.5867C17.7224 11.6254';
+      const disabledGhostIcon = 'M14.7497 9.25362L15.4433 9.50118L18.0931 7.79902';
+      const hasEnabled = paths.some(p => p.outerHTML.includes(enabledGhostIcon));
+      const hasDisabled = paths.some(p => p.outerHTML.includes(disabledGhostIcon));
+      return !hasEnabled && !hasDisabled;
       });
 
+
+
       if (!ghostModeDisabled) {
-        return res.status(500).send('Tried to disable ghost mode, but it is still active.');
+        return res.send('Ghost mode disabled 👻 (verified via "New chat").');
+
       }
 
       return res.send(`Ghost mode disabled 👻 (via "New chat").`);
@@ -284,11 +303,12 @@ app.post('/api/set-ghostmode', validateToken, async (req, res) => {
   }
 });
 
+
 app.post('/api/start-new-chat', validateToken, async (req, res) => {
   if (!loggedIn) return res.status(401).send('Please login first.');
 
   try {
-    // === Save logged conversation  ===
+    // === Save logged conversation if logging is enabled ===
     if (chatLogging?.enabled && chatLogging.log.length > 0) {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filenameBase = `chatlog_${timestamp}`;
@@ -320,7 +340,7 @@ app.post('/api/start-new-chat', validateToken, async (req, res) => {
       chatLogging.log = [];
     }
 
-    // === new normal chat ===
+    // === Start New Chat as normal ===
     await page.bringToFront();
 
     const result = await page.evaluate(() => {
@@ -345,6 +365,56 @@ app.post('/api/start-new-chat', validateToken, async (req, res) => {
   }
 });
 
+
+
+//upload files
+
+app.post('/api/upload-file', validateToken, upload.array('files', 10), async (req, res) => {
+  if (!loggedIn) return res.status(401).send('Please login first.');
+
+  try {
+    const files = req.files;
+
+    if (!files || files.length === 0) {
+      return res.status(400).send('No files uploaded.');
+    }
+
+    // ✅ Log uploaded files info
+    console.log('📦 Uploading files:');
+    for (const file of files) {
+      console.log({
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        size: file.size,
+        tempPath: file.path,
+      });
+    }
+
+    
+    await page.bringToFront();
+
+    //  file input path?
+    const inputElement = await page.$('input[type="file"]');
+    if (!inputElement) {
+      console.error('❌ File input element not found on page.');
+      return res.status(500).send('Upload input not found on page.');
+    }
+
+    // collect all
+    const filePaths = files.map((f) => f.path);
+
+    // upload all 
+    await inputElement.uploadFile(...filePaths);
+
+    // wait 
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    res.send(`✅ ${files.length} file(s) uploaded successfully.`);
+  } catch (err) {
+    console.error('❌ Error uploading files:', err);
+    res.status(500).send(`Failed to upload files: ${err.message}`);
+  }
+});
 
 
 app.post('/api/send-prompt', validateToken, async (req, res) => {
@@ -424,7 +494,7 @@ app.post('/api/send-prompt', validateToken, async (req, res) => {
 
     const responseText = await finalResponse.jsonValue();
 
-    // response pair if chat logging is enabled
+    // Log prompt/response pair if chat logging is enabled
     if (chatLogging?.enabled && responseText) {
       chatLogging.log.push({
         prompt,
@@ -442,6 +512,9 @@ app.post('/api/send-prompt', validateToken, async (req, res) => {
     res.status(500).send(`Waiting failed: ${err.message}`);
   }
 });
+
+
+
 
 
 //delete files one by one 
@@ -519,7 +592,7 @@ app.post('/api/remove-file', validateToken, async (req, res) => {
   }
 });
 
-// enable or disable chat choose format
+// Enable or disable chat logging and choose format
 app.post('/api/set-save-chat', validateToken, (req, res) => {
   const { enabled, format } = req.body;
 
@@ -537,7 +610,7 @@ app.post('/api/set-save-chat', validateToken, (req, res) => {
   chatLogging.enabled = enabled;
   chatLogging.format = chosenFormat;
 
-  
+  // Reset the log when toggling
   if (enabled) {
     chatLogging.log = [];
   }
@@ -546,77 +619,244 @@ app.post('/api/set-save-chat', validateToken, (req, res) => {
 });
 
 
+// call to Hacker Messages as Service (HMAS)
+app.post('/api/send-hacker-message', validateToken, async (req, res) => {
+  const { url } = req.body;
+
+  if (!url || !url.includes('apikey=')) {
+    return res.status(400).send('Missing or invalid API URL with apikey');
+  }
+
+  // Determine requested format from URL param or default to json
+  const formatMatch = url.match(/format=(json|yaml|html|txt)/i);
+  const format = formatMatch ? formatMatch[1].toLowerCase() : FORMAT_JSON;
+
+  // Map format to Accept header
+  const acceptHeaderMap = {
+    [FORMAT_JSON]: CONTENT_TYPE_JSON,
+    [FORMAT_YAML]: CONTENT_TYPE_YAML,
+    [FORMAT_HTML]: CONTENT_TYPE_HTML,
+    [FORMAT_TXT]: CONTENT_TYPE_PLAIN,
+  };
+  const acceptHeader = acceptHeaderMap[format] || CONTENT_TYPE_JSON;
+
+  try {
+    // Fetch from API URL 
+    const response = await fetch(url, {
+      headers: { Accept: acceptHeader },
+    });
+
+    const contentTypeRaw = (response.headers.get('content-type') || '').toLowerCase();
+
+    let parsedData;
+    let rawText = '';
+
+    // Parse response according to content-type or requested format
+    if (contentTypeRaw.includes(CONTENT_TYPE_JSON) || format === FORMAT_JSON) {
+      parsedData = await response.json();
+    } else {
+      rawText = await response.text();
+
+      if (contentTypeRaw.includes(CONTENT_TYPE_YAML) || format === FORMAT_YAML) {
+        try {
+          parsedData = YAML.parse(rawText);
+        } catch {
+          parsedData = { message: rawText };
+        }
+      } else if (contentTypeRaw.includes(CONTENT_TYPE_HTML) || format === FORMAT_HTML) {
+        // strip html tags 
+        parsedData = { message: rawText.replace(/<\/?[^>]+(>|$)/g, '') };
+      } else if (format === FORMAT_TXT || contentTypeRaw.includes(CONTENT_TYPE_PLAIN)) {
+        parsedData = { message: rawText };
+      } else {
+        parsedData = { message: rawText };
+      }
+    }
+
+    // extract string value
+    const message = typeof parsedData === 'object'
+      ? Object.values(parsedData).find(val => typeof val === 'string' && val.trim()) || 'No message found.'
+      : String(parsedData);
+
+    // clean clutter phrases 
+    const cleanedMessage = message
+      .replace(/I like this response.*$/gis, '')
+      .replace(/Report an issue.*$/gis, '')
+      .replace(/Copy.*$/gis, '')
+      .replace(/Regenerate.*$/gis, '')
+      .trim();
+
+    // send prompt text to Lumo 
+    const sendToLumo = async (prompt) => {
+      await page.bringToFront();
+      const inputSelectors = ['p[data-placeholder="Ask anything…"]', 'div.ProseMirror'];
+      let inputHandle = null;
+
+      for (const selector of inputSelectors) {
+        try {
+          await page.waitForSelector(selector, { timeout: 5000 });
+          inputHandle = await page.$(selector);
+          if (inputHandle) break;
+        } catch {}
+      }
+      if (!inputHandle) throw new Error('Lumo input field not found.');
+
+      await inputHandle.focus();
+
+      await page.evaluate(() => {
+        const el = document.activeElement;
+        if (el) el.textContent = '';
+      });
+
+      await page.keyboard.type(prompt, { delay: 20 });
+      await page.keyboard.press('Enter');
+
+      // wait for Lumo response
+      const previousResponse = await page.evaluate(() => {
+        const blocks = Array.from(document.querySelectorAll('.assistant-msg-container'))
+          .map(div => div.innerText.trim()
+            .replace(/I like this response.*$/gis, '')
+            .replace(/Report an issue.*$/gis, '')
+            .replace(/Copy.*$/gis, '')
+            .replace(/Regenerate.*$/gis, '')
+            .trim()
+          )
+          .filter(text => text.length > 0);
+        return blocks.length ? blocks[blocks.length - 1] : null;
+      });
+
+      const finalResponse = await page.waitForFunction(
+        (prevText) => {
+          const blocks = Array.from(document.querySelectorAll('.assistant-msg-container'))
+            .map(div => div.innerText.trim()
+              .replace(/I like this response.*$/gis, '')
+              .replace(/Report an issue.*$/gis, '')
+              .replace(/Copy.*$/gis, '')
+              .replace(/Regenerate.*$/gis, '')
+              .trim()
+            )
+            .filter(text => text.length > 0);
+          if (!blocks.length) return false;
+          const last = blocks[blocks.length - 1];
+          if (!last || last === prevText) return false;
+          if (!window._prevContent) {
+            window._prevContent = { text: last, time: Date.now() };
+            return false;
+          }
+          if (window._prevContent.text !== last) {
+            window._prevContent = { text: last, time: Date.now() };
+            return false;
+          }
+          const elapsed = Date.now() - window._prevContent.time;
+          return elapsed > 2000 ? last : false;
+        },
+        { timeout: 30000 },
+        previousResponse
+      );
+
+      return finalResponse.jsonValue();
+    };
+
+    const lumoResponse = await sendToLumo(cleanedMessage);
+
+    const output = `
+🛰️ Hacker API message sent:
+${cleanedMessage}
+
+🤖 Lumo API responded:
+${lumoResponse}
+    `.trim();
+
+    res.type('text/plain').send(output);
+  } catch (err) {
+    console.error('❌ Error in send-hacker-prompt:', err);
+    res.status(500).send('Proxy Error: ' + err.message);
+  }
+});
+
+
+
 
 app.get('/api/help', (req, res) => {
-  const api = 'http://localhost:3000/api';
-  const token = 'YOUR_SECRET_TOKEN_HERE';
-
   const helpText = `
 === CURL COMMANDS FOR LUMO API ===
 
-1. Send a Prompt:
-curl -X POST ${api}/send-prompt \\
-     -H "Authorization: Bearer ${token}" \\
-     -H "Content-Type: application/json" \\
-     -d '{"prompt": "Your question here"}'
+➤ Sending a Prompt to Lumo
+curl -X POST http://localhost:3000/api/send-prompt \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{"prompt": "What is the weather in Zurich?"}'
 
-2. Start a New Chat:
-curl -X POST ${api}/start-new-chat \\
-     -H "Authorization: Bearer ${token}"
+➤ Enabling Web Search
+curl -X POST http://localhost:3000/api/set-websearch \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{"enabled": true}'
 
-3. Enable Chat Logging (TXT, JSON, CSV):
-curl -X POST ${api}/set-save-chat \\
-     -H "Authorization: Bearer ${token}" \\
-     -H "Content-Type: application/json" \\
-     -d '{"enabled": true, "format": "txt"}' //or json or csv
+➤ Disabling Web Search
+curl -X POST http://localhost:3000/api/set-websearch \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{"enabled": false}'
 
-4. Disable Chat Logging:
-curl -X POST ${api}/set-save-chat \\
-     -H "Authorization: Bearer ${token}" \\
-     -H "Content-Type: application/json" \\
-     -d '{"enabled": false}'
+➤ Enabling Ghost Mode
+curl -X POST http://localhost:3000/api/set-ghostmode \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{"enabled": true}'
 
-5. Toggle Web Search:
-curl -X POST ${api}/set-websearch \\
-     -H "Authorization: Bearer ${token}" \\
-     -H "Content-Type: application/json" \\
-     -d '{"enabled": true}'    # or false
+➤ Disabling Ghost Mode
+curl -X POST http://localhost:3000/api/set-ghostmode \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{"enabled": false}'
 
-6. Enable Ghost Mode:
-curl -X POST ${api}/set-ghostmode \\
-     -H "Authorization: Bearer ${token}" \\
-     -H "Content-Type: application/json" \\
-     -d '{"enabled": true}'
+➤ Start New Chat
+curl -X POST http://localhost:3000/api/start-new-chat \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json"
 
-7. Disable Ghost Mode:
-curl -X POST ${api}/set-ghostmode \\
-     -H "Authorization: Bearer ${token}" \\
-     -H "Content-Type: application/json" \\
-     -d '{"enabled": false}'
+➤ Upload Files (max 10, or depending on Lumo limits)
+curl -X POST http://localhost:3000/api/upload-file \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -F "files=@./test.html" \\
+  -F "files=@./test2.txt" \\
+  -F "files=@./test3.txt"
 
-8. Upload a File:
-curl -X POST ${api}/upload-file \\
-     -H "Authorization: Bearer ${token}" \\
-     -F "file=@yourfile.txt"
+➤ Upload a Single File
+curl -X POST http://localhost:3000/api/upload-file \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -F "files=@./test.html"
 
-9. Delete a File:
-curl -X POST ${api}/delete-file \\
-     -H "Authorization: Bearer ${token}" \\
-     -H "Content-Type: application/json" \\
-     -d '{"filename": "yourfile.txt"}'
+➤ Delete All Files
+curl -X POST http://localhost:3000/api/remove-file \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{"mode":"all"}'
 
-10. Delete All Files:
-curl -X POST ${api}/delete-all-files \\
-     -H "Authorization: Bearer ${token}"
+➤ Delete a Single File
+curl -X POST http://localhost:3000/api/remove-file \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{"mode":"single"}'
+  
 
+➤ Call to Hmas Api // read the api docs for more commands
+➤ Proxy a request to Hmas API and send the response to Lumo
+➤ Please note that the api key will be disabled soon
+➤ To keep using this feauture consider to buy a api key 
+curl -X POST http://localhost:3000/api/send-hacker-message \
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://carlostkd.ch/hmas/api.php?as=admin&format=html&apikey=testkey123"}'
   `;
+
 
   res.type('text/plain').send(helpText);
 });
 
 
-
 app.listen(3000, async () => {
   await launchBrowser();
-  console.log('Server listening on http://localhost:3000');
+  console.log('🚀 Server listening on http://localhost:3000');
 });
