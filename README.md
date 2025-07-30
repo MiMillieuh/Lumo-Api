@@ -3,12 +3,14 @@
 
 <img src="https://pmecdn.protonweb.com/image-transformation/?s=s&image=Lumo_OG_b782facdaf.png" width="300" height="150" />
 
+# Please read the ![version-3](version-3.0-README.md) for extended features.
+
 
 Copyright @Carlostkd
 
-warning ⚠️ If you have installed the previous version to use the upload/delete files you need to install the multer:
+warning ⚠️ If you have installed the previous version to use the new features you need install:
 
-npm install multer
+npm install multer yaml nodemailer
 
 ## warning ⚠️ chat loggin function logs the Ghost chats too useful to keep saved chats on your end but not online.
 
@@ -27,6 +29,8 @@ This API allows you to integrate Proton Lumo Assistante in any of your Projects 
 - **Upload and delete files**:💬 Always like a pro
 - **Chat Logging**:💬 Gives you full controle of yours chat
 - **Help Function**: List all available commands
+- **Talk with Hmas Api**: 💬 Get Hacker Messages as Service in your projects
+- **Lumo-Api can analyze your computer for**: 💬 Like a real Cat
 
 ## Installation 🛠️
 
