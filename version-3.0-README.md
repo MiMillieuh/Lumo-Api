@@ -308,7 +308,13 @@ main();
 
 Choose wich services and how much lines from the "lumo.sh" file  you want to send to Lumo-Api
 
-then manaully run the script ./lumo.sh or add it to the cron jobs to run at desired time every day.
+then manually run the script 
+
+```bash
+./lumo.sh
+```
+ 
+Or add it to the cron jobs to run at desired time every day.
 
 The script logs in a temporary file your desired system logs then uploads the file to Lumo with a personalized prompt.
 
@@ -317,7 +323,7 @@ The script logs in a temporary file your desired system logs then uploads the fi
 Run the script
 
 ```bash
-./logs.sh
+./lumo.sh
 ```
 
 ```bash
