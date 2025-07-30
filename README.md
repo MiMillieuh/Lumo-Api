@@ -40,7 +40,7 @@ cd lumo-api
 ```bash
 npm init -y
 
-npm install express puppeteer-core puppeteer body-parser cors multer
+npm install express puppeteer-core puppeteer body-parser cors multer nodemailer yaml
 
 
 run the app
