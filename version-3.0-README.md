@@ -84,15 +84,12 @@ Create the file lumo.sh and paste this:
 
 ```bash
 #!/bin/bash
-# === version 1.0 ===
-# === Author @Carlostkd ===
-# === Configuration ===
 
 API_URL="http://localhost:3000/api/send-prompt"
 UPLOAD_URL="http://localhost:3000/api/upload-file"
 NEW_CHAT_URL="http://localhost:3000/api/start-new-chat"
 TOKEN="YOUR_SECRET_TOKEN_HERE"
-EMAIL_TO="justin@case.com" //not the email of the Justin but yours
+EMAIL_TO="you@example.com"
 
 TMP_DIR="./tmp"
 TMP_CURL_OUTPUT="$TMP_DIR/tmp-response.raw"
@@ -100,12 +97,12 @@ TMP_CURL_OUTPUT="$TMP_DIR/tmp-response.raw"
 mkdir -p "$TMP_DIR"
 rm -f "$TMP_DIR"/*.txt "$TMP_DIR"/*.raw
 
-# === User OPTONS ===
+# === user optons ===
 
 LAST_LINES=10
 JOURNALCTL_LINES=10
 
-# === FUNCTIONS: Log + upload + prompt + email ===
+# === functions  ===
 log_and_prompt() {
   local name="$1"
   local prompt="$2"
@@ -150,17 +147,38 @@ log_and_prompt() {
     REPLY="$HTTP_BODY"
   fi
 
+  # Wait for the full response from Lumo
+  if [[ -z "$REPLY" ]]; then
+    echo "⌛ Waiting for Lumo to respond..."
+    # Add a delay to allow Lumo to process the request
+    sleep 5
+    # Retry getting the response
+    curl -s -w "\nHTTP_STATUS:%{http_code}\n" -X POST "$API_URL" \
+      -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{\"prompt\": $PROMPT}" > "$TMP_CURL_OUTPUT"
+
+    HTTP_BODY=$(sed '/HTTP_STATUS:/d' "$TMP_CURL_OUTPUT")
+    HTTP_STATUS=$(grep "HTTP_STATUS:" "$TMP_CURL_OUTPUT" | cut -d':' -f2)
+
+    if jq -e . >/dev/null 2>&1 <<<"$HTTP_BODY"; then
+      REPLY=$(jq -r '.response // .message // empty' <<<"$HTTP_BODY")
+    else
+      REPLY="$HTTP_BODY"
+    fi
+  fi
+
   [[ -z "$REPLY" ]] && REPLY="⚠️ No meaningful response from Lumo for $name."
 
   echo "📧 Sending email for $name..."
   node send-email.js "$EMAIL_TO" "🔍 Lumo: $name analysis" "$REPLY"
 }
 
-# === Defaults ===
+# === defaults ===
 #log_and_prompt "dmesg" "Check for hardware or kernel-level issues in this log:" \
 #  "dmesg --level=err | tail -n $LAST_LINES | sed '/^\s*$/d'"
 
-# === Optional logs — uncomment to enable | or add yours ===
+# === Optional logs — uncomment to enable or add yours ===
 
 # log_and_prompt "uptime" "What does the system uptime tell us?" \
 #   "uptime"
@@ -222,7 +240,7 @@ log_and_prompt() {
 # log_and_prompt "tcpdump" "Where are these network packets coming from?" \
 #   "sudo tcpdump -nn -c 10"
 
-# === Start new chat (clean up Lumo server state and delete the uploaded file) ===
+# === start new chat and delete the uploaded file ===
 echo "🔄 Starting new chat to reset server state..."
 NEW_CHAT_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}\n" -X POST "$NEW_CHAT_URL" \
   -H "Authorization: Bearer $TOKEN")
@@ -236,7 +254,7 @@ else
   echo "✅ New chat started successfully."
 fi
 
-# === CLEANUP ===
+# === clear ===
 rm -f "$TMP_CURL_OUTPUT"
 echo "✅ Done."
 ```
