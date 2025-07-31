@@ -85,6 +85,15 @@ Create the file lumo.sh and paste this:
 ```bash
 #!/bin/bash
 
+# uncomment if you have issues to run from crontab
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export NODE_PATH="/usr/local/lib/node_modules"
+export HOME="/home/your_username"
+
+#then set your crontab like:
+#0 * * * * cd /path/to/directory/ && /usr/bin/env bash /path/to/lumo.sh
+
+
 API_URL="http://localhost:3000/api/send-prompt"
 UPLOAD_URL="http://localhost:3000/api/upload-file"
 NEW_CHAT_URL="http://localhost:3000/api/start-new-chat"
