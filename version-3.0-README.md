@@ -305,7 +305,7 @@ async function main() {
     port: 587,
     secure: false, // STARTTLS
     auth: {
-      user: 'yore proton submission email',
+      user: 'your proton submission email',
       pass: 'your protom SMTP token',
     },
   });
