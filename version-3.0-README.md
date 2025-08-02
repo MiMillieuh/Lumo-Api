@@ -32,13 +32,13 @@ sudo apt install smartmontools    # Your disk's personal doctor
 
 Now you can give super powers  and some fun to your computer 
 
-Use the Hmas (Hacker Messages as Service in your projects
+Use the Hmas (Hacker Messages as Service) in your projects
 
 Read the Hmas Api Docs for more refined commands
 
 https://carlostkd.ch/hmas
 
-⚠️ Warning this Hmas api key will soon be disabled to keep using this feauture consider buying your api key.
+⚠️ Warning this Hmas api key will soon be disabled to keep using this feauture consider to buy your api key.
 
 ```bash
 
