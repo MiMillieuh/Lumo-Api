@@ -30,7 +30,7 @@ This API allows you to integrate Proton Lumo Assistante in any of your Projects 
 - **Chat Logging**:💬 Gives you full controle of yours chat
 - **Help Function**: List all available commands
 - **Talk with Hmas Api**: 💬 Get Hacker Messages as Service in your projects
-- **Lumo-Api can analyze your computer for**: 💬 Like a real Cat
+- **Lumo-Api can analyze your computer**: 💬 Like a real cybersecurity Cat
 
 ## Installation 🛠️
 
