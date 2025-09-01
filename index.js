@@ -111,9 +111,103 @@ app.use(cors());
 app.use(bodyParser.json());
 
 const SECRET_TOKEN = 'YOUR_SECRET_TOKEN_HERE';
+
+// OpenAI API compatibility
+const OPENAI_MODEL = 'proton-lumo';
+const OPENAI_API_VERSION = 'v1';
 let browser, page;
 let loggedIn = false;
 let webSearchEnabled = false;
+
+// Auto-enable ghost mode and web search function
+async function autoEnableFeatures() {
+  try {
+    console.log('🤖 Auto-enabling ghost mode and web search...');
+    
+    // Wait a bit for the page to fully load
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Auto-enable ghost mode
+    try {
+      const ghostResult = await page.evaluate(() => {
+        const paths = Array.from(document.querySelectorAll('path'));
+        const disabledGhostIcon = 'M14.7497 9.25362L15.4433 9.50118L18.0931 7.79902';
+        const enabledGhostIcon = 'M17.0185 11.5867C17.7224 11.6254';
+        
+        const ghostPath = paths.find(p =>
+          p.outerHTML.includes(disabledGhostIcon) || p.outerHTML.includes(enabledGhostIcon)
+        );
+        
+        if (!ghostPath) return { success: false, reason: 'Ghost icon not found' };
+        
+        const ghostButton = ghostPath.closest('button');
+        if (!ghostButton) return { success: false, reason: 'Ghost button not found' };
+        
+        const isEnabled = ghostPath.outerHTML.includes(enabledGhostIcon);
+        
+        if (!isEnabled) {
+          ghostButton.click();
+          return { success: true, action: 'enabled' };
+        }
+        
+        return { success: true, action: 'already_enabled' };
+      });
+      
+      if (ghostResult.success) {
+        if (ghostResult.action === 'enabled') {
+          console.log('✅ Ghost mode auto-enabled!');
+        } else {
+          console.log('👻 Ghost mode was already enabled');
+        }
+      } else {
+        console.log('⚠️ Could not auto-enable ghost mode:', ghostResult.reason);
+      }
+    } catch (err) {
+      console.log('⚠️ Ghost mode auto-enable failed:', err.message);
+    }
+    
+    // Wait a bit between operations
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Auto-enable web search
+    try {
+      const webSearchResult = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll('button'));
+        const webSearchButton = buttons.find(btn => btn.innerText.trim() === 'Web search');
+        
+        if (!webSearchButton) return { success: false, reason: 'Web search button not found' };
+        
+        const isActive = webSearchButton.classList.contains('is-active');
+        
+        if (!isActive) {
+          webSearchButton.click();
+          return { success: true, action: 'enabled' };
+        }
+        
+        return { success: true, action: 'already_enabled' };
+      });
+      
+      if (webSearchResult.success) {
+        if (webSearchResult.action === 'enabled') {
+          webSearchEnabled = true;
+          console.log('✅ Web search auto-enabled!');
+        } else {
+          webSearchEnabled = true;
+          console.log('🔍 Web search was already enabled');
+        }
+      } else {
+        console.log('⚠️ Could not auto-enable web search:', webSearchResult.reason);
+      }
+    } catch (err) {
+      console.log('⚠️ Web search auto-enable failed:', err.message);
+    }
+    
+    console.log('✨ Auto-feature configuration completed!');
+    
+  } catch (err) {
+    console.log('⚠️ Auto-enable features failed:', err.message);
+  }
+}
 
 async function launchBrowser() {
   console.log('Launching Puppeteer...');
@@ -140,7 +234,7 @@ async function launchBrowser() {
   page = await browser.newPage();
   await page.goto('https://lumo.proton.me', { waitUntil: 'networkidle2' });
 
-  // Check if already logged in
+  // Check if already logged in and auto-enable features
   const loginCheckInterval = setInterval(async () => {
     try {
       const dropdownSelector = 'button[data-testid="heading:userdropdown"]';
@@ -149,6 +243,9 @@ async function launchBrowser() {
         loggedIn = true;
         clearInterval(loginCheckInterval);
         console.log('✅ Already logged in! Session restored from previous session.');
+        
+        // Auto-enable ghost mode and web search
+        await autoEnableFeatures();
       }
     } catch {}
   }, 2000);
@@ -158,6 +255,22 @@ async function launchBrowser() {
     if (!loggedIn) {
       console.log('🔑 Please log in manually to Proton Lumo in the opened browser.');
       console.log('💡 Your login will be remembered for next time!');
+      
+      // Set up login detection for manual login
+      const manualLoginCheck = setInterval(async () => {
+        try {
+          const dropdownSelector = 'button[data-testid="heading:userdropdown"]';
+          const exists = await page.$(dropdownSelector);
+          if (exists) {
+            loggedIn = true;
+            clearInterval(manualLoginCheck);
+            console.log('✅ Manual login detected!');
+            
+            // Auto-enable ghost mode and web search after manual login
+            await autoEnableFeatures();
+          }
+        } catch {}
+      }, 3000);
     }
   }, 5000);
 }
@@ -165,8 +278,41 @@ async function launchBrowser() {
 const validateToken = (req, res, next) => {
   const token = req.headers['authorization'];
   if (token !== `Bearer ${SECRET_TOKEN}`) {
-    return res.status(403).send('Forbidden: Invalid token');
+    return res.status(403).json({
+      error: {
+        message: 'Invalid authentication credentials',
+        type: 'invalid_request_error',
+        code: 'invalid_api_key'
+      }
+    });
   }
+  next();
+};
+
+// OpenAI-compatible authentication
+const validateOpenAIToken = (req, res, next) => {
+  const token = req.headers['authorization'];
+  if (!token || !token.startsWith('Bearer ')) {
+    return res.status(401).json({
+      error: {
+        message: 'You didn\'t provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY).',
+        type: 'invalid_request_error',
+        code: null
+      }
+    });
+  }
+  
+  const apiKey = token.replace('Bearer ', '');
+  if (apiKey !== SECRET_TOKEN) {
+    return res.status(401).json({
+      error: {
+        message: 'Incorrect API key provided',
+        type: 'invalid_request_error',
+        code: 'invalid_api_key'
+      }
+    });
+  }
+  
   next();
 };
 
@@ -1227,7 +1373,635 @@ curl -X POST http://localhost:3000/api/send-hacker-message \
 });
 
 
+// OpenAI-compatible endpoints
+
+// List models endpoint
+app.get('/v1/models', validateOpenAIToken, (req, res) => {
+  res.json({
+    object: 'list',
+    data: [
+      {
+        id: OPENAI_MODEL,
+        object: 'model',
+        created: Math.floor(Date.now() / 1000),
+        owned_by: 'proton',
+        permission: [],
+        root: OPENAI_MODEL,
+        parent: null
+      }
+    ]
+  });
+});
+
+// Chat completions endpoint (OpenAI compatible)
+app.post('/v1/chat/completions', validateOpenAIToken, async (req, res) => {
+  if (!loggedIn) {
+    return res.status(503).json({
+      error: {
+        message: 'Service temporarily unavailable. Please ensure Proton Lumo is logged in.',
+        type: 'service_unavailable',
+        code: 'service_unavailable'
+      }
+    });
+  }
+
+  const { messages, model, stream = false, max_tokens, temperature, top_p, n, stop, presence_penalty, frequency_penalty } = req.body;
+
+  if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid request: messages is required and must be a non-empty array',
+        type: 'invalid_request_error',
+        code: null
+      }
+    });
+  }
+
+  // Extract the latest user message
+  const userMessages = messages.filter(msg => msg.role === 'user');
+  if (userMessages.length === 0) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid request: at least one user message is required',
+        type: 'invalid_request_error',
+        code: null
+      }
+    });
+  }
+
+  let content = userMessages[userMessages.length - 1].content;
+  let prompt;
+  
+  // Handle different content formats (OpenAI supports both string and array formats)
+  if (typeof content === 'string') {
+    prompt = content;
+  } else if (Array.isArray(content)) {
+    // Handle array format like [{ "type": "text", "text": "Hello" }]
+    const textParts = content
+      .filter(part => part.type === 'text' && typeof part.text === 'string')
+      .map(part => part.text);
+    
+    if (textParts.length === 0) {
+      return res.status(400).json({
+        error: {
+          message: 'Invalid request: no text content found in message',
+          type: 'invalid_request_error',
+          code: null
+        }
+      });
+    }
+    
+    prompt = textParts.join(' ');
+  } else if (typeof content === 'object' && content !== null) {
+    // Handle object format like { "text": "Hello" }
+    if (typeof content.text === 'string') {
+      prompt = content.text;
+    } else {
+      return res.status(400).json({
+        error: {
+          message: 'Invalid request: message content object must have a text property',
+          type: 'invalid_request_error',
+          code: null
+        }
+      });
+    }
+  } else {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid request: message content must be a string, array, or object with text',
+        type: 'invalid_request_error',
+        code: null
+      }
+    });
+  }
+  
+  // Clean and validate the prompt
+  prompt = prompt.trim();
+  if (!prompt) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid request: message content cannot be empty',
+        type: 'invalid_request_error',
+        code: null
+      }
+    });
+  }// Send text using DOM manipulation to simulate paste without touching system clipboard
+  const sendTextToLumo = async (text) => {
+    console.log(`📝 Sending prompt via simulated paste: "${text.substring(0, 100)}..."`);
+    
+    await page.bringToFront();
+    const inputSelectors = [
+      'p[data-placeholder="Ask anything…"]',
+      'div.ProseMirror'
+    ];
+
+    let inputHandle = null;
+    for (const selector of inputSelectors) {
+      try {
+        await page.waitForSelector(selector, { timeout: 10000 });
+        inputHandle = await page.$(selector);
+        if (inputHandle) break;
+      } catch {}
+    }
+
+    if (!inputHandle) {
+      throw new Error('Prompt input field not found');
+    }
+
+    // Click on the input to focus it
+    await inputHandle.click();
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    // Clear the input field using selection and deletion
+    await page.keyboard.down('Control');
+    await page.keyboard.press('KeyA'); // Select all
+    await page.keyboard.up('Control');
+    await page.keyboard.press('Delete'); // Delete selected content
+    
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Insert text using DOM manipulation that simulates a paste event
+    const textInserted = await page.evaluate((textToSet) => {
+      const inputElem = document.activeElement;
+      if (!inputElem) return false;
+      
+      try {
+        // Method 1: Try modern insertText command
+        if (document.execCommand && document.queryCommandSupported('insertText')) {
+          const success = document.execCommand('insertText', false, textToSet);
+          if (success) {
+            console.log('✅ Text inserted via execCommand insertText');
+            return true;
+          }
+        }
+        
+        // Method 2: Use InputEvent with insertText
+        const inputEvent = new InputEvent('beforeinput', {
+          bubbles: true,
+          cancelable: true,
+          inputType: 'insertText',
+          data: textToSet
+        });
+        
+        inputElem.dispatchEvent(inputEvent);
+        
+        // Set the text content
+        if (inputElem.contentEditable === 'true') {
+          // For contenteditable elements (ProseMirror)
+          const selection = window.getSelection();
+          if (selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            range.deleteContents();
+            range.insertNode(document.createTextNode(textToSet));
+            range.collapse(false);
+          } else {
+            inputElem.textContent = textToSet;
+          }
+        } else {
+          // For regular input elements
+          inputElem.value = textToSet;
+          inputElem.textContent = textToSet;
+        }
+        
+        // Dispatch comprehensive events to simulate real paste
+        const events = [
+          new Event('input', { bubbles: true }),
+          new Event('change', { bubbles: true }),
+          new InputEvent('input', {
+            bubbles: true,
+            inputType: 'insertText',
+            data: textToSet
+          }),
+          new KeyboardEvent('keyup', { bubbles: true }),
+          new Event('blur', { bubbles: true }),
+          new Event('focus', { bubbles: true })
+        ];
+        
+        events.forEach(event => {
+          try {
+            inputElem.dispatchEvent(event);
+          } catch (e) {
+            // Ignore event dispatch errors
+          }
+        });
+        
+        // Trigger focus to ensure the cursor is positioned correctly
+        inputElem.focus();
+        
+        console.log('✅ Text inserted via DOM manipulation with events');
+        return true;
+        
+      } catch (error) {
+        console.error('Text insertion failed:', error);
+        return false;
+      }
+    }, text);
+    
+    if (!textInserted) {
+      console.log('⚠️ DOM insertion failed, using fallback keyboard typing');
+      // Last resort: use keyboard typing but without delay
+      await page.keyboard.type(text, { delay: 0 });
+    }
+    
+    // Wait for the UI to process the inserted content
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Try to find and click the send button, with fallback to Enter
+    const buttonClicked = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll('button'));
+      
+      // Look for the send button with lumo-arrow
+      let sendButton = buttons.find(btn => {
+        const img = btn.querySelector('img[src*="lumo-arrow"], img[alt*="Start generating"], img[alt*="Send"]');
+        return !!img;
+      });
+      
+      // Alternative: look for button near input with specific classes
+      if (!sendButton) {
+        sendButton = buttons.find(btn => 
+          btn.classList.contains('button-for-icon') &&
+          btn.classList.contains('rounded-full') &&
+          btn.querySelector('img')
+        );
+      }
+      
+      if (sendButton && sendButton.getAttribute('aria-busy') !== 'true' && !sendButton.disabled) {
+        sendButton.click();
+        return true;
+      }
+      
+      return false;
+    });
+    
+    if (buttonClicked) {
+      console.log('✅ Prompt sent via send button click');
+    } else {
+      console.log('⚠️ Send button not available, using Enter key');
+      await page.keyboard.press('Enter');
+      console.log('✅ Prompt sent via Enter key');
+    }
+  };
+    
+    // Wait for response using stop button detection instead of timeouts
+  const waitForLumoResponse = async () => {
+    console.log('🔄 Waiting for Lumo response...');
+    
+    // First wait for generation to start (stop button appears)
+    console.log('🔍 Waiting for generation to start...');
+    try {
+      await page.waitForSelector('button img[src*="lumo-stop"], button img[alt*="Stop generating"]', {
+        timeout: 10000
+      });
+      console.log('✅ Generation started (stop button detected)');
+    } catch (err) {
+      console.log('⚠️ Stop button not detected, generation may have been instant');
+    }
+    
+    // Wait for generation to finish (stop button disappears)
+    console.log('🔄 Waiting for generation to complete...');
+    try {
+      await page.waitForFunction(
+        () => {
+          // Check if stop button still exists
+          const stopButton = document.querySelector('button img[src*="lumo-stop"], button img[alt*="Stop generating"]');
+          return !stopButton; // Return true when stop button is gone
+        },
+        { timeout: 120000 } // 2 minutes max timeout for long responses
+      );
+      console.log('✅ Generation completed (stop button disappeared)');
+    } catch (err) {
+      console.log('⚠️ Stop button timeout - generation may still be running');
+    }
+    
+    // Give a small delay for UI to update after generation stops
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Now get the final response
+    const responseText = await page.evaluate(() => {
+      const blocks = Array.from(document.querySelectorAll('.assistant-msg-container'))
+        .map(div => div.innerText.trim()
+          .replace(/I like this response.*$/gis, '')
+          .replace(/Report an issue.*$/gis, '')
+          .replace(/Copy.*$/gis, '')
+          .replace(/Regenerate.*$/gis, '')
+          .trim()
+        )
+        .filter(text => text.length > 0);
+      return blocks.length ? blocks[blocks.length - 1] : null;
+    });
+    
+    console.log(`✅ Response received: ${responseText ? responseText.substring(0, 100) + '...' : 'null'}`);
+    
+    if (!responseText) {
+      throw new Error('No response received from Proton Lumo');
+    }
+    
+    return responseText;
+  };
+
+  try {
+    if (stream) {
+      // Streaming response
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Headers', '*');
+
+      const chatId = `chatcmpl-${Date.now()}`;
+      const timestamp = Math.floor(Date.now() / 1000);
+
+      // Send initial chunk
+      const initialChunk = {
+        id: chatId,
+        object: 'chat.completion.chunk',
+        created: timestamp,
+        model: model || OPENAI_MODEL,
+        choices: [{
+          index: 0,
+          delta: {
+            role: 'assistant',
+            content: ''
+          },
+          finish_reason: null
+        }]
+      };
+      res.write(`data: ${JSON.stringify(initialChunk)}\n\n`);
+
+      try {
+        await sendTextToLumo(prompt);
+      } catch (inputError) {
+        const errorChunk = {
+          id: chatId,
+          object: 'chat.completion.chunk',
+          created: timestamp,
+          model: model || OPENAI_MODEL,
+          choices: [{
+            index: 0,
+            delta: {},
+            finish_reason: 'stop'
+          }],
+          error: inputError.message
+        };
+        res.write(`data: ${JSON.stringify(errorChunk)}\n\n`);
+        res.write('data: [DONE]\n\n');
+        return res.end();
+      }
+
+      // Get response using new method
+      let responseText;
+      try {
+        responseText = await waitForLumoResponse();
+      } catch (responseError) {
+        const errorChunk = {
+          id: chatId,
+          object: 'chat.completion.chunk',
+          created: timestamp,
+          model: model || OPENAI_MODEL,
+          choices: [{
+            index: 0,
+            delta: {},
+            finish_reason: 'stop'
+          }],
+          error: responseError.message
+        };
+        res.write(`data: ${JSON.stringify(errorChunk)}\n\n`);
+        res.write('data: [DONE]\n\n');
+        return res.end();
+      }
+
+      // Send the complete response in one chunk (faster, cleaner)
+      if (responseText) {
+        const contentChunk = {
+          id: chatId,
+          object: 'chat.completion.chunk',
+          created: timestamp,
+          model: model || OPENAI_MODEL,
+          choices: [{
+            index: 0,
+            delta: {
+              content: responseText
+            },
+            finish_reason: null
+          }]
+        };
+        res.write(`data: ${JSON.stringify(contentChunk)}\n\n`);
+      }
+
+      // Send final chunk
+      const finalChunk = {
+        id: chatId,
+        object: 'chat.completion.chunk',
+        created: timestamp,
+        model: model || OPENAI_MODEL,
+        choices: [{
+          index: 0,
+          delta: {},
+          finish_reason: 'stop'
+        }]
+      };
+      res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+
+      // Log if chat logging is enabled
+      if (chatLogging?.enabled && responseText) {
+        chatLogging.log.push({
+          prompt,
+          response: responseText
+        });
+      }
+
+    } else {
+      // Non-streaming response
+      try {
+        await sendTextToLumo(prompt);
+      } catch (inputError) {
+        return res.status(500).json({
+          error: {
+            message: inputError.message,
+            type: 'server_error',
+            code: 'input_not_found'
+          }
+        });
+      }
+
+      let responseText;
+      try {
+        responseText = await waitForLumoResponse();
+      } catch (responseError) {
+        return res.status(500).json({
+          error: {
+            message: responseError.message,
+            type: 'server_error',
+            code: 'no_response'
+          }
+        });
+      }
+
+      // Log if chat logging is enabled
+      if (chatLogging?.enabled) {
+        chatLogging.log.push({
+          prompt,
+          response: responseText
+        });
+      }
+
+      // Return OpenAI-compatible response
+      const response = {
+        id: `chatcmpl-${Date.now()}`,
+        object: 'chat.completion',
+        created: Math.floor(Date.now() / 1000),
+        model: model || OPENAI_MODEL,
+        choices: [{
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: responseText
+          },
+          finish_reason: 'stop'
+        }],
+        usage: {
+          prompt_tokens: prompt.split(' ').length,
+          completion_tokens: responseText.split(' ').length,
+          total_tokens: prompt.split(' ').length + responseText.split(' ').length
+        }
+      };
+
+      res.json(response);
+    }
+  } catch (err) {
+    console.error('❌ Error in OpenAI chat completion:', err);
+    res.status(500).json({
+      error: {
+        message: `Internal server error: ${err.message}`,
+        type: 'server_error',
+        code: 'internal_error'
+      }
+    });
+  }
+});
+
+// Legacy endpoints (keep existing functionality)
+app.get('/api/help', (req, res) => {
+  const helpText = `
+=== OPENAI-COMPATIBLE API ENDPOINTS ===
+
+➤ List Models (OpenAI Compatible)
+curl -X GET http://localhost:3000/v1/models \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE"
+
+➤ Chat Completions (OpenAI Compatible)
+curl -X POST http://localhost:3000/v1/chat/completions \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "proton-lumo",
+    "messages": [
+      {"role": "user", "content": "What is the weather in Zurich?"}
+    ]
+  }'
+
+➤ Chat Completions with Streaming (OpenAI Compatible)
+curl -X POST http://localhost:3000/v1/chat/completions \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "proton-lumo",
+    "messages": [
+      {"role": "user", "content": "Tell me about AI"}
+    ],
+    "stream": true
+  }'
+
+=== LEGACY CURL COMMANDS FOR LUMO API ===
+
+➤ Sending a Prompt to Lumo
+curl -X POST http://localhost:3000/api/send-prompt \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{"prompt": "What is the weather in Zurich?"}'
+
+➤ Enabling Web Search
+curl -X POST http://localhost:3000/api/set-websearch \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{"enabled": true}'
+
+➤ Disabling Web Search
+curl -X POST http://localhost:3000/api/set-websearch \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{"enabled": false}'
+
+➤ Enabling Ghost Mode
+curl -X POST http://localhost:3000/api/set-ghostmode \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{"enabled": true}'
+
+➤ Disabling Ghost Mode
+curl -X POST http://localhost:3000/api/set-ghostmode \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{"enabled": false}'
+
+➤ Start New Chat
+curl -X POST http://localhost:3000/api/start-new-chat \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json"
+
+➤ Upload Files (max 10, or depending on Lumo limits)
+curl -X POST http://localhost:3000/api/upload-file \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -F "files=@./test.html" \\
+  -F "files=@./test2.txt" \\
+  -F "files=@./test3.txt"
+
+➤ Upload a Single File
+curl -X POST http://localhost:3000/api/upload-file \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -F "files=@./test.html"
+
+➤ Delete All Files
+curl -X POST http://localhost:3000/api/remove-file \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{"mode":"all"}'
+
+➤ Delete a Single File
+curl -X POST http://localhost:3000/api/remove-file \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{"mode":"single"}'
+
+  
+➤ Envolving Function
+curl -X POST http://localhost:3000/api/send-automated-dialogue \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{"initialPrompt": "what is proton lumo", "maxTurns": 30}'
+  
+
+➤ Call to Hmas Api // read the api docs for more commands
+➤ Proxy a request to Hmas API and send the response to Lumo
+➤ Please note that the api key will be disabled soon
+➤ To keep using this feauture consider to buy a api key 
+curl -X POST http://localhost:3000/api/send-hacker-message \\
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{"url": "https://carlostkd.ch/hmas/api.php?as=admin&format=html&apikey=testkey123"}'
+  `;
+
+
+  res.type('text/plain').send(helpText);
+});
+
 app.listen(3000, async () => {
   await launchBrowser();
   console.log('🚀 Server listening on http://localhost:3000');
+  console.log('📡 OpenAI-compatible API available at:');
+  console.log('   - GET  /v1/models');
+  console.log('   - POST /v1/chat/completions');
+  console.log('📚 Legacy API help: GET /api/help');
 });
